@@ -29,14 +29,15 @@ function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-5 flex flex-col">
-      <header className="py-8">
-        <p className="text-center font-serif text-2xl text-black font-semibold">
-          Examination Management Portal
-        </p>
-      </header>
+    <div className="min-h-screen bg-slate-50 justify-between flex flex-col">
+      {/* Top Branding Bar */}
+      <div className="bg-[#8B1A1A] flex justify-center items-center p-2">
+             <div className="font-light text-white">
+                    Examination Portal
+             </div>
+      </div>
 
-      <main className="flex flex-1 items-center justify-center mb-24">
+      <main className="flex flex-1 items-center justify-center ">
         <div className="w-full max-w-md bg-white p-10 rounded-2xl border border-slate-200 shadow-md">
           <div className="flex justify-center mb-8">
             <img src={logo} alt="LNMIIT_LOGO" className="h-16 w-auto object-contain" />
@@ -54,7 +55,7 @@ function ForgotPassword() {
               />
               <button 
                 onClick={handleOtpRequest}
-                className="text-blue-700 text-xs font-bold float-right mt-1 underline cursor-pointer"
+                className="font-normal text-xs text-blue-900 rounded-md float-right mt-1 underline cursor-pointer"
               >
                 Send OTP
               </button>
@@ -84,21 +85,26 @@ function ForgotPassword() {
             />
           </div>
 
-          <div className="mt-8 space-y-3">
+          <div className="mt-8 space-y-3 flex flex-col items-center justify-center">
             <button 
               onClick={handleReset}
-              className="w-full bg-green-800 hover:bg-green-900 text-white font-semibold py-2.5 rounded-md shadow-sm transition-colors"
+              className="w-7/12 bg-[#992c2c] text-white font-light py-2.5  rounded-md shadow-sm transition-colors"
             >
               Set New Password
             </button>
             <Link to="/">
-              <button className="w-full mt-3 bg-[#000080] hover:bg-blue-950 text-white font-semibold py-2.5 rounded-md shadow-sm transition-colors">
+              <button className="font-normal text-xs text-blue-900 rounded-md">
                 Move to Login?
               </button>
             </Link>
           </div>
         </div>
       </main>
+        {/* Footer Info */}
+      <footer className="bg-slate-100 py-6 px-8 text-center text-slate-500 text-sm">
+       
+        <p>The LNM Institute of Information Technology, Jaipur (Deemed-to-be-University)</p>
+      </footer>
     </div>
   );
 }
