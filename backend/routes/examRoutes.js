@@ -1,15 +1,28 @@
 import express from 'express';
-import { addExamSlot, getAvailableSlots, scheduleExam } from '../controllers/examController.js';
+import { 
+    getAvailableSlots, 
+    addBatchExamSlots, 
+    scheduleBatchExams 
+} from '../controllers/examController.js';
 
 const router = express.Router();
 
-// Route to add a new date/time slot (Step 1)
-router.post('/add-slot', addExamSlot);
+// ---------------------------------------------------
+// PHASE 1: GENERATE EXAM SLOTS
+// ---------------------------------------------------
 
-// Route to get list of slots for the dropdown (Step 2)
+// Route to generate and insert multiple exam dates/times at once
+router.post('/add-batch-slots', addBatchExamSlots);
+
+
+// ---------------------------------------------------
+// PHASE 2: SCHEDULE COURSES INTO SLOTS
+// ---------------------------------------------------
+
+// Route to get the list of generated slots (used by the Excel Template Generator)
 router.get('/available-slots', getAvailableSlots);
 
-// Route to actually book the exam (Step 2 submit)
-router.post('/schedule', scheduleExam);
+// Route to handle the bulk saving of courses from the uploaded Excel file
+router.post('/schedule-batch', scheduleBatchExams); 
 
 export default router;
