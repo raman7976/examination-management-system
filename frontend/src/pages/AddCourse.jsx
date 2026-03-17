@@ -56,24 +56,24 @@ function AddCourse() {
     setMessage("Template downloaded successfully.");
   };
 
-  // 3. Read the Uploaded Excel File and Send to Backend
-const handleExcelUpload = (e) => {
+// 3. Read the Uploaded Excel File and Send to Backend
+  const handleExcelUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setIsLoading(true);
-    setMessage('');
+    setMessage('Reading file...');
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const data = event.target.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
         const validCourses = [];
-        let currentSlotId = null; // This acts as our "Smart Memory"
+        let currentSlotId = null; // <--- THE SMART MEMORY IS BACK!
 
         // Loop through the Excel rows one by one
         jsonData.forEach(row => {
@@ -99,20 +99,24 @@ const handleExcelUpload = (e) => {
         }
 
         // Send to backend
-        await API.post('/exams/schedule-batch', { courses: validCourses });
+        const response = await API.post('/exams/schedule-batch', { courses: validCourses });
         
         setMessage(`Success: ${validCourses.length} courses have been scheduled!`);
         setIsLoading(false);
 
       } catch (err) {
-        console.error(err);
+        console.error("Upload Error:", err);
         setIsLoading(false);
-        setMessage("Error processing the Excel file. Please ensure you used the provided template.");
+        if (err.response) {
+            setMessage(`Database Error: ${err.response.data.message}`);
+        } else {
+            setMessage(`Parsing Error: Check console for details.`);
+        }
       }
     };
     
     e.target.value = null; 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file); 
   };
 
   return (
