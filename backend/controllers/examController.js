@@ -107,20 +107,7 @@ export const addClassroom = async (req, res) => {
 export const getSeatingStatus = async (req, res) => {
     try {
         // Auto-create seating_allocations if migration hasn't been run yet on the cloud DB
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS seating_allocations (
-                id                  INT AUTO_INCREMENT PRIMARY KEY,
-                scheduled_exam_id   INT     NOT NULL,
-                classroom_id        INT     NOT NULL,
-                lane                CHAR(1) NOT NULL,
-                student_count       INT     NOT NULL,
-                room_mode           CHAR(1) NOT NULL,
-                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (scheduled_exam_id) REFERENCES scheduled_exams(id) ON DELETE CASCADE,
-                FOREIGN KEY (classroom_id)      REFERENCES classrooms(id)      ON DELETE CASCADE
-            )
-        `);
-
+        
         const [rows] = await db.execute(`
             SELECT
                 es.id                               AS slot_id,
@@ -208,6 +195,23 @@ export const generateAndExportAllSeating = async (req, res) => {
         if (!slots.length)
             return res.status(404).json({ message: 'No slots with scheduled exams found.' });
 
+
+
+
+        const [allCourses] = await db.execute('SELECT * FROM scheduled_exams ORDER BY student_count DESC');
+
+
+        const coursesBySlot = allCourses.reduce((acc, course) => {
+            if (!acc[course.slot_id]) acc[course.slot_id] = [];
+            acc[course.slot_id].push(course);
+            return acc;
+        }, {});
+
+
+
+
+      /*
+
         // Validate: every slot with an explicit config must have ≥ 1 room
         for (const [slotId, ids] of Object.entries(slotRoomConfig)) {
             if (!Array.isArray(ids) || ids.length === 0)
@@ -215,6 +219,8 @@ export const generateAndExportAllSeating = async (req, res) => {
                     message: `slotRoomConfig for slot ${slotId} must be a non-empty array.`
                 });
         }
+    
+    */
 
         // 3. Build workbook — each slot uses its own room list
         const workbook = new ExcelJS.Workbook();
@@ -223,10 +229,11 @@ export const generateAndExportAllSeating = async (req, res) => {
         const summaries   = [];
 
         for (const slot of slots) {
-            const [courses] = await db.execute(
+            const courses = coursesBySlot[slot.id] || [];
+                /*await db.execute(
                 'SELECT * FROM scheduled_exams WHERE slot_id = ? ORDER BY student_count DESC',
-                [slot.id]
-            );
+                [slot.id]*/
+            
             if (!courses.length) continue;
 
             // Per-slot room IDs: use explicit config if provided, else fallback

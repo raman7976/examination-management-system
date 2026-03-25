@@ -1,14 +1,19 @@
 import express  from 'express';
 import multer   from 'multer';
+
+// Controllers
 import {
     // Phase 1
     addBatchExamSlots,
+
     // Phase 2
     getAvailableSlots,
     scheduleBatchExams,
+
     // Phase 3
     getClassrooms,
     addClassroom,
+
     // Phase 4
     getSeatingStatus,
     generateAndExportAllSeating,
@@ -18,7 +23,17 @@ import {
 
 const router = express.Router();
 
+
+
+
+
+// ==========================================
+// UPLOAD CONFIGURATION & SAFETY
+// ==========================================
 // Multer: store uploaded Excel in memory (no disk I/O needed)
+
+
+
 const upload = multer({
     storage: multer.memoryStorage(),
     fileFilter: (_req, file, cb) => {
@@ -30,11 +45,41 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
 });
 
+
+// 🛡️ NEW: Multer Error Wrapper
+// This prevents Multer from crashing the app if the file is too big or the wrong type
+const handleSeatingUpload = (req, res, next) => {
+    const uploadSingle = upload.single('seatingFile');
+
+    uploadSingle(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            // A Multer error occurred when uploading (e.g., file too large).
+            return res.status(400).json({ success: false, message: `Upload Error: ${err.message}` });
+        } else if (err) {
+            // An unknown error occurred (e.g., our INVALID_FILE_TYPE error).
+            if (err.message === 'INVALID_FILE_TYPE') {
+                return res.status(400).json({ success: false, message: 'Only .xlsx files are accepted.' });
+            }
+            return res.status(500).json({ success: false, message: 'An unknown upload error occurred.' });
+        }
+        // Everything went fine, move to the actual controller
+        next();
+    });
+};
+
+
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  PHASE 1 – EXAM SLOTS
 //  POST /api/exams/add-batch-slots
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/add-batch-slots', addBatchExamSlots);
+
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PHASE 2 – SCHEDULE COURSES INTO SLOTS
@@ -44,6 +89,10 @@ router.post('/add-batch-slots', addBatchExamSlots);
 router.get('/available-slots', getAvailableSlots);
 router.post('/schedule-batch', scheduleBatchExams);
 
+
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  PHASE 3 – CLASSROOMS
 //  GET  /api/exams/classrooms
@@ -51,6 +100,10 @@ router.post('/schedule-batch', scheduleBatchExams);
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/classrooms',  getClassrooms);
 router.post('/classrooms', addClassroom);
+
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PHASE 4 – SEATING ENGINE  (Human-in-the-loop workflow)
@@ -73,5 +126,8 @@ router.post('/generate-export',                 generateAndExportAllSeating);
 router.post('/upload-seating',
     upload.single('seatingFile'),               uploadAndSaveSeating);
 router.get('/slots/:slotId/seating',            getSeatingPlan);
+
+
+
 
 export default router;
