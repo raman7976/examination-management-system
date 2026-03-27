@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-// Change the baseURL to the root API level
+// Relative URL → goes through the Vite proxy (see vite.config.js)
 const API = axios.create({
-    baseURL: 'http://localhost:5002/api', // <-- Changed to 5002
+    baseURL: '/api',
 });
 
 // ==========================================

@@ -2,6 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 const API = '/api/exams';
 
+/** Build headers with the JWT token from localStorage */
+function authHeaders(extra = {}) {
+    const token = localStorage.getItem('token');
+    const headers = { ...extra };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Tiny helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,8 +192,8 @@ export default function SeatingManager() {
             try {
                 // Fetch both endpoints; capture non-2xx responses as errors
                 const [sRes, cRes] = await Promise.all([
-                    fetch(`${API}/seating-status`),
-                    fetch(`${API}/classrooms`),
+                    fetch(`${API}/seating-status`, { headers: authHeaders() }),
+                    fetch(`${API}/classrooms`,     { headers: authHeaders() }),
                 ]);
 
                 // Surface server-side error messages in the UI
@@ -229,7 +237,7 @@ export default function SeatingManager() {
     }, [notify]);
 
     const refreshStatus = useCallback(() => {
-        fetch(`${API}/seating-status`).then(r => r.json())
+        fetch(`${API}/seating-status`, { headers: authHeaders() }).then(r => r.json())
             .then(d => { if (Array.isArray(d)) setSlots(d); })
             .catch(() => {});
     }, []);
@@ -266,7 +274,7 @@ export default function SeatingManager() {
         try {
             const res = await fetch(`${API}/generate-export`, {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
                 body:    JSON.stringify({ slotRoomConfig }),
             });
             if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? `HTTP ${res.status}`);
@@ -296,7 +304,7 @@ export default function SeatingManager() {
         const form = new FormData();
         form.append('seatingFile', file);
         try {
-            const res  = await fetch(`${API}/upload-seating`, { method: 'POST', body: form });
+            const res  = await fetch(`${API}/upload-seating`, { method: 'POST', headers: authHeaders(), body: form });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
             notify(`✓ Saved! ${data.exams_processed} exams · ${data.allocations_saved} allocations.`, 'success');

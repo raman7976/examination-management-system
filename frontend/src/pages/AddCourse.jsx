@@ -16,7 +16,7 @@ function AddCourse() {
       } catch (err) {
         console.error("Failed to fetch slots", err);
         setMessage("Error loading available slots.");
-      }``
+      }
     };
     fetchSlots();
   }, []);
