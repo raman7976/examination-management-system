@@ -5,20 +5,33 @@ import Dashboard from './pages/Dashboard.jsx';
 import AddExam from './pages/AddExam.jsx';
 import AddCourse from './pages/AddCourse.jsx';
 import SeatingManager from './pages/SeatingManager.jsx';
+import ProtectedRoute from './components/ProtectedRoute'; // ✅ Import is perfect
 import './App.css';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* ========================================== */}
+        {/* PUBLIC ROUTES (No token required)          */}
+        {/* ========================================== */}
         <Route path="/" element={<LoginPage />} />
         <Route path="/forgotPassword" element={<ForgotPassword />} />
-        <Route path="/dashboard" element={<Dashboard />}>
-          {/* These are "Children" - they render inside the <Outlet /> */}
-          <Route path="add-exam"        element={<AddExam />} />
-          <Route path="add-course"      element={<AddCourse />} />
-          <Route path="seating-manager" element={<SeatingManager />} />
+
+        {/* ========================================== */}
+        {/* PROTECTED ROUTES (Requires VIP Wristband)  */}
+        {/* ========================================== */}
+        <Route element={<ProtectedRoute />}>
+          
+          <Route path="/dashboard" element={<Dashboard />}>
+            {/* These are "Children" - they render inside the <Outlet /> */}
+            <Route path="add-exam"        element={<AddExam />} />
+            <Route path="add-course"      element={<AddCourse />} />
+            <Route path="seating-manager" element={<SeatingManager />} />
+          </Route>
+          
         </Route>
+
       </Routes>
     </BrowserRouter>
   );

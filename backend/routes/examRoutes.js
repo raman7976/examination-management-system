@@ -1,6 +1,6 @@
 import express  from 'express';
 import multer   from 'multer';
-
+import { protect } from '../middleware/middleware1.js';
 // Controllers
 import {
     // Phase 1
@@ -70,7 +70,7 @@ const handleSeatingUpload = (req, res, next) => {
 
 
 
-
+router.use(protect);
 // ─────────────────────────────────────────────────────────────────────────────
 //  PHASE 1 – EXAM SLOTS
 //  POST /api/exams/add-batch-slots
@@ -86,7 +86,7 @@ router.post('/add-batch-slots', addBatchExamSlots);
 //  GET  /api/exams/available-slots
 //  POST /api/exams/schedule-batch
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/available-slots', getAvailableSlots);
+router.get('/available-slots',  getAvailableSlots);
 router.post('/schedule-batch', scheduleBatchExams);
 
 
