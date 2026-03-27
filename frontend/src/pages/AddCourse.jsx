@@ -120,42 +120,62 @@ function AddCourse() {
   };
 
   return (
-    <div className="max-w-3xl animate-fadeIn">
-      <h2 className="text-lg font-light text-slate-700 mb-6 tracking-tight">Bulk Schedule Courses</h2>
-      
-      <div className="bg-slate-50 p-8 rounded-md border border-slate-100 shadow-sm">
-        <div className="mb-8">
-          <h3 className="text-sm font-bold text-[#8B1A1A] uppercase tracking-widest mb-2 border-b pb-2">Step 1: Download Template</h3>
-          <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+    <div className="max-w-3xl">
+
+      {/* Page Header */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Add Course to Slot</h2>
+        <p className="text-sm text-slate-500 mt-1">Bulk schedule courses by downloading the template, filling it, and uploading</p>
+      </div>
+
+      {/* Card */}
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
+
+        {/* Step 1 */}
+        <div className="p-6 border-b border-slate-100">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-7 h-7 rounded-full bg-[#8B1A1A] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">1</div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Download Template</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-5 leading-relaxed ml-10">
             Download the pre-formatted Excel sheet. It contains all available exam slots. Add your course names, instructors, and student counts into the empty columns provided.
           </p>
-          <button 
-            onClick={handleDownloadTemplate}
-            className="px-6 py-2 bg-white text-slate-700 text-[11px] font-bold uppercase tracking-widest rounded shadow-sm border border-slate-200 hover:bg-slate-100 transition-all"
-          >
-            ↓ Download Excel Template
-          </button>
+          <div className="ml-10">
+            <button 
+              onClick={handleDownloadTemplate}
+              className="px-6 py-2.5 bg-white text-[#8B1A1A] text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm border border-[#8B1A1A]/30 hover:bg-[#fef2f2] hover:border-[#8B1A1A] transition-all duration-200"
+            >
+              ↓ Download Excel Template
+            </button>
+          </div>
         </div>
 
-        <div>
-          <h3 className="text-sm font-bold text-[#8B1A1A] uppercase tracking-widest mb-2 border-b pb-2">Step 2: Upload Data</h3>
-          <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+        {/* Step 2 */}
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-7 h-7 rounded-full bg-[#8B1A1A] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">2</div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Upload Filled Template</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-5 leading-relaxed ml-10">
             Once you have filled out the template, upload it here to instantly schedule all courses into the database.
           </p>
-          <label className={`px-6 py-2 text-white text-[11px] font-bold uppercase tracking-widest rounded shadow-sm transition-all cursor-pointer ${isLoading ? 'bg-slate-400' : 'bg-[#8B1A1A] hover:bg-[#721515]'}`}>
-            {isLoading ? 'Processing...' : '↑ Upload Filled Template'}
-            <input 
-              type="file" 
-              accept=".xlsx, .xls" 
-              className="hidden" 
-              onChange={handleExcelUpload} 
-              disabled={isLoading}
-            />
-          </label>
+          <div className="ml-10">
+            <label className={`inline-flex items-center gap-2 px-6 py-2.5 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm transition-all duration-200 cursor-pointer ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] hover:shadow-md'}`}>
+              {isLoading ? 'Processing...' : '↑ Upload Filled Template'}
+              <input 
+                type="file" 
+                accept=".xlsx, .xls" 
+                className="hidden" 
+                onChange={handleExcelUpload} 
+                disabled={isLoading}
+              />
+            </label>
+          </div>
         </div>
 
+        {/* Message */}
         {message && (
-          <div className={`mt-6 p-3 rounded text-xs font-medium border ${message.includes('Error') ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+          <div className={`mx-6 mb-6 p-4 rounded-lg text-xs font-semibold border ${message.includes('Error') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
             {message}
           </div>
         )}

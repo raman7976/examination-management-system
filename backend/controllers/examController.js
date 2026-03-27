@@ -40,6 +40,38 @@ export const addBatchExamSlots = async (req, res) => {
     }
 };
 
+export const updateExamSlot = async (req, res) => {
+    const { id } = req.params;
+    const { exam_date, exam_day, start_time, end_time } = req.body;
+    if (!exam_date || !exam_day || !start_time || !end_time)
+        return res.status(400).json({ message: 'All fields are required (exam_date, exam_day, start_time, end_time).' });
+    try {
+        const [result] = await db.execute(
+            'UPDATE exam_slots SET exam_date = ?, exam_day = ?, start_time = ?, end_time = ? WHERE id = ?',
+            [exam_date, exam_day, start_time, end_time, id]
+        );
+        if (result.affectedRows === 0)
+            return res.status(404).json({ message: 'Slot not found.' });
+        res.json({ message: 'Slot updated successfully.' });
+    } catch (error) {
+        console.error('Update slot error:', error);
+        res.status(500).json({ message: 'Server Error', error: error.message });
+    }
+};
+
+export const deleteExamSlot = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [result] = await db.execute('DELETE FROM exam_slots WHERE id = ?', [id]);
+        if (result.affectedRows === 0)
+            return res.status(404).json({ message: 'Slot not found.' });
+        res.json({ message: 'Slot deleted successfully.' });
+    } catch (error) {
+        console.error('Delete slot error:', error);
+        res.status(500).json({ message: 'Server Error', error: error.message });
+    }
+};
+
 export const getAvailableSlots = async (req, res) => {
     try {
         const [rows] = await db.execute('SELECT * FROM exam_slots ORDER BY exam_date, start_time');

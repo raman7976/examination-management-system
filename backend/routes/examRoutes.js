@@ -5,6 +5,8 @@ import { protect } from '../middleware/middleware1.js';
 import {
     // Phase 1
     addBatchExamSlots,
+    updateExamSlot,
+    deleteExamSlot,
 
     // Phase 2
     getAvailableSlots,
@@ -76,6 +78,8 @@ router.use(protect);
 //  POST /api/exams/add-batch-slots
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/add-batch-slots', addBatchExamSlots);
+router.put('/slots/:id', updateExamSlot);
+router.delete('/slots/:id', deleteExamSlot);
 
 
 

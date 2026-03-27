@@ -15,41 +15,31 @@ function authHeaders(extra = {}) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function Badge({ status }) {
-    const map = {
-        saved:   { bg: '#d1fae5', color: '#065f46', label: 'Saved' },
-        pending: { bg: '#fef3c7', color: '#92400e', label: 'Pending' },
-        empty:   { bg: '#f3f4f6', color: '#6b7280', label: 'No courses' },
+    const styles = {
+        saved:   'bg-emerald-100 text-emerald-800',
+        pending: 'bg-amber-100 text-amber-800',
+        empty:   'bg-slate-100 text-slate-500',
     };
-    const s = map[status] ?? map.empty;
+    const labels = { saved: 'Saved', pending: 'Pending', empty: 'No courses' };
+    const key = status in styles ? status : 'empty';
     return (
-        <span style={{
-            background: s.bg, color: s.color,
-            padding: '2px 10px', borderRadius: 99,
-            fontSize: 11, fontWeight: 700,
-            letterSpacing: '0.04em', textTransform: 'uppercase',
-        }}>
-            {s.label}
+        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wider uppercase ${styles[key]}`}>
+            {labels[key]}
         </span>
     );
 }
 
 function Step({ num, title, active, done }) {
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-                width: 28, height: 28, borderRadius: '50%',
-                background: done ? '#10b981' : active ? '#e30712ff' : '#e5e7eb',
-                color: done || active ? '#fff' : '#9ca3af',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 700, flexShrink: 0,
-                transition: 'background 0.3s',
-            }}>
+        <div className="flex items-center gap-2.5">
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold flex-shrink-0 transition-colors duration-300 ${
+                done ? 'bg-emerald-500 text-white' : active ? 'bg-[#8B1A1A] text-white' : 'bg-slate-200 text-slate-400'
+            }`}>
                 {done ? '✓' : num}
             </div>
-            <span style={{
-                fontSize: 13, fontWeight: active ? 700 : 500,
-                color: active ? '#1e293b' : done ? '#10b981' : '#94a3b8',
-            }}>
+            <span className={`text-[13px] ${
+                active ? 'font-bold text-slate-800' : done ? 'font-medium text-emerald-500' : 'font-medium text-slate-400'
+            }`}>
                 {title}
             </span>
         </div>
@@ -58,29 +48,23 @@ function Step({ num, title, active, done }) {
 
 function Toast({ message, type, onClose }) {
     useEffect(() => { const t = setTimeout(onClose, 4500); return () => clearTimeout(t); }, [onClose]);
-    const c = { success: ['#d1fae5','#10b981','#065f46'], error: ['#fee2e2','#ef4444','#991b1b'], info: ['#dbeafe','#e80505ff','#d00606ff'] }[type] ?? ['#dbeafe','#ea092bff','#ee0b29ff'];
+    const styles = {
+        success: 'bg-emerald-50 border-emerald-500 text-emerald-800',
+        error:   'bg-red-50 border-red-500 text-red-800',
+        info:    'bg-red-50 border-[#8B1A1A] text-red-900',
+    };
+    const s = styles[type] ?? styles.info;
     return (
-        <div style={{
-            position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-            background: c[0], border: `1.5px solid ${c[1]}`, color: c[2],
-            borderRadius: 10, padding: '12px 18px', maxWidth: 380,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            display: 'flex', alignItems: 'flex-start', gap: 10,
-            animation: 'slideUp 0.25s ease',
-        }}>
-            <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{message}</div>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c[2], fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
+        <div className={`fixed bottom-6 right-6 z-[9999] border-[1.5px] rounded-xl px-4 py-3 max-w-[380px] shadow-xl flex items-start gap-2.5 animate-slideUp ${s}`}>
+            <div className="flex-1 text-[13px] font-medium">{message}</div>
+            <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-lg leading-none p-0 opacity-70 hover:opacity-100 transition-opacity">×</button>
         </div>
     );
 }
 
 function Spinner() {
     return (
-        <span style={{
-            width: 14, height: 14, border: '2px solid currentColor',
-            borderTopColor: 'transparent', borderRadius: '50%',
-            display: 'inline-block', animation: 'spin 0.7s linear infinite',
-        }} />
+        <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full inline-block animate-spin" />
     );
 }
 
@@ -97,27 +81,19 @@ function SlotRoomSelector({ slotId, classrooms, selectedIds, onChange }) {
     const building2 = classrooms.filter(r => r.location_order >= 50);
 
     const RoomGroup = ({ title, rooms }) => (
-        <div style={{ marginBottom: 10 }}>
-            <p style={{
-                fontSize: 10, fontWeight: 700, color: '#94a3b8',
-                letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6,
-            }}>{title}</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        <div className="mb-2.5">
+            <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-1.5">{title}</p>
+            <div className="flex flex-wrap gap-1.5">
                 {rooms.map(r => {
                     const on = selectedIds.includes(r.id);
                     return (
                         <button key={r.id} onClick={() => toggle(r.id)}
                             title={`Purple:${r.cap_purple} Green:${r.cap_green} Yellow:${r.cap_yellow} | ${r.type}`}
-                            style={{
-                                padding: '3px 10px', borderRadius: 5,
-                                border: `1.5px solid ${on ? '#eb2539ff' : '#e2e8f0'}`,
-                                background: on ? '#dbeafe' : '#f8fafc',
-                                color: on ? '#d70505ff' : '#64748b',
-                                fontSize: 11, fontWeight: on ? 700 : 500,
-                                cursor: 'pointer',
-                                fontFamily: "'DM Mono', monospace",
-                                transition: 'all 0.12s',
-                            }}>
+                            className={`px-2.5 py-0.5 rounded text-[11px] font-mono cursor-pointer transition-all duration-150 border-[1.5px] ${
+                                on
+                                    ? 'border-[#8B1A1A] bg-red-50 text-[#8B1A1A] font-bold'
+                                    : 'border-slate-200 bg-slate-50 text-slate-500 font-medium'
+                            }`}>
                             {r.room_name}
                         </button>
                     );
@@ -127,25 +103,19 @@ function SlotRoomSelector({ slotId, classrooms, selectedIds, onChange }) {
     );
 
     return (
-        <div style={{
-            padding: '14px 16px', background: '#f0f7ff',
-            borderRadius: 8, border: '1px solid #bfdbfe',
-        }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#080102ff' }}>
+        <div className="p-3.5 bg-red-50 rounded-lg border border-red-200">
+            <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-800">
                     Rooms for this slot
-                    <span style={{
-                        marginLeft: 8,
-                        background: selectedIds.length === 0 ? '#fee2e2' : '#2bed76ff',
-                        color:      selectedIds.length === 0 ? '#991b1b' : '#030303ff',
-                        borderRadius: 99, padding: '1px 8px', fontSize: 11, fontWeight: 700,
-                    }}>
+                    <span className={`ml-2 rounded-full px-2 py-px text-[11px] font-bold ${
+                        selectedIds.length === 0 ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
                         {selectedIds.length} selected
                     </span>
                 </span>
-                <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={selectAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#2563eb', fontFamily: 'inherit', fontWeight: 700 }}>All</button>
-                    <button onClick={clearAll}  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#ef4444', fontFamily: 'inherit', fontWeight: 700 }}>None</button>
+                <div className="flex gap-2.5">
+                    <button onClick={selectAll} className="bg-transparent border-none cursor-pointer text-[11px] text-[#8B1A1A] font-bold hover:underline">All</button>
+                    <button onClick={clearAll}  className="bg-transparent border-none cursor-pointer text-[11px] text-red-500 font-bold hover:underline">None</button>
                 </div>
             </div>
 
@@ -155,7 +125,7 @@ function SlotRoomSelector({ slotId, classrooms, selectedIds, onChange }) {
             )}
 
             {selectedIds.length === 0 && (
-                <p style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginTop: 6 }}>
+                <p className="text-xs text-red-500 font-semibold mt-1.5">
                     ⚠ No rooms selected — this slot will be skipped during export.
                 </p>
             )}
@@ -331,49 +301,42 @@ export default function SeatingManager() {
     return (
         <>
             <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap');
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                body { font-family: 'Outfit', sans-serif; background: #f1f5f9; }
+                @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
                 @keyframes slideUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
-                @keyframes spin    { to { transform: rotate(360deg) } }
-                .slot-row:hover td  { background: #f0f9ff !important; }
-                .upload-zone:hover, .upload-zone.drag { border-color: #e10606ff !important; background: #eff6ff !important; }
-                .action-btn:hover:not(:disabled) { filter: brightness(1.08); }
-                .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+                .animate-slideUp { animation: slideUp 0.25s ease; }
+                .slot-row:hover td { background: #fef2f2 !important; }
             `}</style>
 
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-            <div style={{ minHeight: '100vh', padding: '28px 24px' }}>
-                <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+            <div className="min-h-screen p-7">
+                <div className="max-w-[1180px] mx-auto">
 
                     {/* ── Page header ── */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 28 }}>
+                    <div className="flex items-end justify-between mb-8">
                         <div>
-                            
-                            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#0f172a', lineHeight: 1.15 }}>Seating Plan Assignment</h1>
-                            
-                            <p style={{ color: '#64748b', fontSize: 14, marginTop: 4 }}>Per-slot room assignment</p>
+                            <h1 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Seating Plan Assignment</h1>
+                            <p className="text-sm text-slate-500 mt-1">Per-slot room assignment</p>
                         </div>
-                        <div style={{ display: 'flex', gap: 12 }}>
+                        <div className="flex gap-3">
                             {[['Total Slots', slots.length], ['With Exams', slotsWithExams.length], ['Seating Saved', slotsWithSeating.length]].map(([label, value]) => (
-                                <div key={label} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 18px', textAlign: 'center', minWidth: 90, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                                    <div style={{ fontSize: 22, fontWeight: 700, color: '#1e293b' }}>{value}</div>
-                                    <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>{label}</div>
+                                <div key={label} className="bg-white border border-slate-200 rounded-xl px-5 py-2.5 text-center min-w-[90px] shadow-sm">
+                                    <div className="text-xl font-bold text-slate-800">{value}</div>
+                                    <div className="text-[11px] text-slate-400 font-medium">{label}</div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+                    <div className="grid grid-cols-[1fr_320px] gap-5">
 
                         {/* ── LEFT ── */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        <div className="flex flex-col gap-5">
 
                             {/* Workflow stepper */}
-                            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 22px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 14 }}>Workflow</p>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5">
+                                <p className="text-xs font-bold tracking-widest uppercase text-slate-400 mb-3.5">Workflow</p>
+                                <div className="flex flex-col gap-3">
                                     <Step num={1} title="Expand each slot row to configure its rooms" active={workflowStep === 1} done={workflowStep > 1} />
                                     <Step num={2} title="Generate Excel — algorithm runs per-slot"   active={workflowStep === 2} done={workflowStep > 2} />
                                     <Step num={3} title="Review & edit the downloaded Excel"          active={workflowStep === 3} done={workflowStep > 3} />
@@ -382,39 +345,39 @@ export default function SeatingManager() {
                             </div>
 
                             {/* ── Slot table with expandable room rows ── */}
-                            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
                                 {/* Toolbar */}
-                                <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                                <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
                                     <div>
-                                        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8' }}>Exam Slots</span>
-                                        <span style={{ marginLeft: 8, fontSize: 11, color: '#64748b' }}>— click ▾ to configure rooms per slot</span>
+                                        <span className="text-xs font-bold tracking-widest uppercase text-slate-400">Exam Slots</span>
+                                        <span className="ml-2 text-[11px] text-slate-500">— click ▾ to configure rooms per slot</span>
                                     </div>
-                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                        <span style={{ fontSize: 11, color: '#94a3b8' }}>All slots:</span>
-                                        <button onClick={() => setGlobalRooms(classrooms.map(r => r.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#ae0606ff', fontFamily: 'inherit', fontWeight: 700 }}>All rooms</button>
-                                        <button onClick={() => setGlobalRooms([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#ef4444', fontFamily: 'inherit', fontWeight: 700 }}>Clear rooms</button>
-                                        <span style={{ color: '#e2e8f0', padding: '0 4px' }}>|</span>
-                                        <button onClick={refreshStatus} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#64748b', fontFamily: 'inherit' }}>↻ Refresh</button>
+                                    <div className="flex gap-1.5 items-center">
+                                        <span className="text-[11px] text-slate-400">All slots:</span>
+                                        <button onClick={() => setGlobalRooms(classrooms.map(r => r.id))} className="bg-transparent border-none cursor-pointer text-[11px] text-[#8B1A1A] font-bold hover:underline">All rooms</button>
+                                        <button onClick={() => setGlobalRooms([])} className="bg-transparent border-none cursor-pointer text-[11px] text-red-500 font-bold hover:underline">Clear rooms</button>
+                                        <span className="text-slate-200 px-1">|</span>
+                                        <button onClick={refreshStatus} className="bg-transparent border-none cursor-pointer text-xs text-slate-500 hover:text-slate-700 transition-colors">↻ Refresh</button>
                                     </div>
                                 </div>
 
                                 {loadingStatus ? (
-                                    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>
+                                    <div className="p-10 text-center text-slate-400 text-sm">Loading…</div>
                                 ) : fetchError ? (
-                                    <div style={{ padding: 28, margin: 16, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10 }}>
-                                        <p style={{ fontSize: 13, fontWeight: 700, color: '#991b1b', marginBottom: 8 }}>
+                                    <div className="p-7 m-4 bg-red-50 border border-red-200 rounded-xl">
+                                        <p className="text-[13px] font-bold text-red-800 mb-2">
                                             ⚠ Could not load data from server
                                         </p>
-                                        <p style={{ fontFamily: 'monospace', fontSize: 12, color: '#b91c1c', background: '#fee2e2', padding: '8px 12px', borderRadius: 6, marginBottom: 12, wordBreak: 'break-all' }}>
+                                        <p className="font-mono text-xs text-red-700 bg-red-100 px-3 py-2 rounded-lg mb-3 break-all">
                                             {fetchError}
                                         </p>
-                                        <p style={{ fontSize: 12, color: '#7f1d1d', lineHeight: 1.6 }}>
+                                        <p className="text-xs text-red-900 leading-relaxed">
                                             <strong>Common causes:</strong><br />
-                                            1. <code>seating_allocations</code> table missing → run <code>migration.sql</code> on your Aiven DB<br />
-                                            2. No Vite proxy → add <code>server.proxy</code> in <code>vite.config.js</code> (see below)<br />
+                                            1. <code className="bg-red-100 px-1 rounded">seating_allocations</code> table missing → run <code className="bg-red-100 px-1 rounded">migration.sql</code> on your Aiven DB<br />
+                                            2. No Vite proxy → add <code className="bg-red-100 px-1 rounded">server.proxy</code> in <code className="bg-red-100 px-1 rounded">vite.config.js</code> (see below)<br />
                                             3. Backend not running on port 5001
                                         </p>
-                                        <pre style={{ fontSize: 11, background: '#1e293b', color: '#7dd3fc', padding: '10px 14px', borderRadius: 6, marginTop: 10, overflowX: 'auto' }}>{`// vite.config.js
+                                        <pre className="text-[11px] bg-slate-800 text-sky-300 px-3.5 py-2.5 rounded-lg mt-2.5 overflow-x-auto">{`// vite.config.js
 export default {
   server: {
     proxy: {
@@ -424,18 +387,18 @@ export default {
 }`}</pre>
                                     </div>
                                 ) : slots.length === 0 ? (
-                                    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                                    <div className="p-10 text-center text-slate-400 text-[13px]">
                                         No exam slots found in the database.<br />
-                                        <span style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                                        <span className="text-xs mt-1 block">
                                             Add slots via <strong>Add Exam Slot</strong> in the sidebar first.
                                         </span>
                                     </div>
                                 ) : (
-                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <table className="w-full border-collapse">
                                         <thead>
-                                            <tr style={{ background: '#f8fafc' }}>
+                                            <tr className="bg-slate-50">
                                                 {['', 'Date', 'Day', 'Time', 'Courses', 'Rooms', 'Status'].map(h => (
-                                                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.06em', textTransform: 'uppercase', borderBottom: '1px solid #f1f5f9' }}>{h}</th>
+                                                    <th key={h} className="px-3 py-2 text-left text-[11px] font-bold text-slate-400 tracking-wider uppercase border-b border-slate-100">{h}</th>
                                                 ))}
                                             </tr>
                                         </thead>
@@ -444,60 +407,51 @@ export default {
                                                 const expanded      = expandedSlots.has(sl.slot_id);
                                                 const roomsSelected = (slotRoomConfig[sl.slot_id] ?? []).length;
                                                 const hasWarning    = sl.exam_count > 0 && roomsSelected === 0;
-                                                const rowBg         = expanded ? '#eff6ff' : i % 2 === 0 ? '#fff' : '#fafafa';
 
                                                 return (
                                                     <>
                                                         {/* ── Main slot row ── */}
                                                         <tr
                                                             key={sl.slot_id}
-                                                            className="slot-row"
+                                                            className={`slot-row cursor-pointer ${expanded ? '' : 'border-b border-slate-100'}`}
                                                             onClick={() => toggleExpand(sl.slot_id)}
-                                                            style={{ cursor: 'pointer', borderBottom: expanded ? 'none' : '1px solid #f1f5f9' }}
                                                         >
                                                             {/* Expand button */}
-                                                            <td style={{ padding: '10px 6px 10px 14px', background: rowBg, width: 32 }}>
+                                                            <td className={`px-1.5 py-2.5 pl-3.5 w-8 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                                                                 <button
                                                                     onClick={e => { e.stopPropagation(); toggleExpand(sl.slot_id); }}
-                                                                    style={{
-                                                                        width: 24, height: 24, borderRadius: 5,
-                                                                        border: `1.5px solid ${expanded ? '#93c5fd' : '#e2e8f0'}`,
-                                                                        background: expanded ? '#dbeafe' : '#f1f5f9',
-                                                                        color: expanded ? '#2563eb' : '#64748b',
-                                                                        cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                        lineHeight: 1, transition: 'all 0.15s',
-                                                                    }}
+                                                                    className={`w-6 h-6 rounded flex items-center justify-center text-[11px] font-bold leading-none transition-all duration-150 border-[1.5px] ${
+                                                                        expanded
+                                                                            ? 'border-[#8B1A1A] bg-red-50 text-[#8B1A1A]'
+                                                                            : 'border-slate-200 bg-slate-100 text-slate-500'
+                                                                    }`}
                                                                 >
                                                                     {expanded ? '▲' : '▾'}
                                                                 </button>
                                                             </td>
-                                                            <td style={{ padding: '10px 12px', background: rowBg, fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{formatDate(sl.exam_date)}</td>
-                                                            <td style={{ padding: '10px 12px', background: rowBg, fontSize: 13, color: '#64748b' }}>{sl.exam_day}</td>
-                                                            <td style={{ padding: '10px 12px', background: rowBg, fontFamily: "'DM Mono', monospace", fontSize: 12, color: '#475569' }}>
+                                                            <td className={`px-3 py-2.5 text-[13px] font-semibold text-slate-800 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>{formatDate(sl.exam_date)}</td>
+                                                            <td className={`px-3 py-2.5 text-[13px] text-slate-500 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>{sl.exam_day}</td>
+                                                            <td className={`px-3 py-2.5 font-mono text-xs text-slate-600 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                                                                 {formatTime(sl.start_time)} – {formatTime(sl.end_time)}
                                                             </td>
-                                                            <td style={{ padding: '10px 12px', background: rowBg, fontSize: 13, color: '#475569', textAlign: 'center' }}>{sl.exam_count}</td>
+                                                            <td className={`px-3 py-2.5 text-[13px] text-slate-600 text-center ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>{sl.exam_count}</td>
                                                             {/* Room count badge */}
-                                                            <td style={{ padding: '10px 12px', background: rowBg }}>
-                                                                <span style={{
-                                                                    fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700,
-                                                                    color:      hasWarning ? '#ef4444' : '#2563eb',
-                                                                    background: hasWarning ? '#fee2e2' : '#eff6ff',
-                                                                    padding: '2px 8px', borderRadius: 5,
-                                                                }}>
+                                                            <td className={`px-3 py-2.5 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                                                                <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded ${
+                                                                    hasWarning ? 'text-red-500 bg-red-100' : 'text-[#8B1A1A] bg-red-50'
+                                                                }`}>
                                                                     {roomsSelected}/{totalRooms}{hasWarning ? ' ⚠' : ''}
                                                                 </span>
                                                             </td>
-                                                            <td style={{ padding: '10px 12px', background: rowBg }}>
+                                                            <td className={`px-3 py-2.5 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                                                                 <Badge status={sl.exam_count === 0 ? 'empty' : sl.has_seating ? 'saved' : 'pending'} />
                                                             </td>
                                                         </tr>
 
                                                         {/* ── Expandable room selector row ── */}
                                                         {expanded && (
-                                                            <tr key={`${sl.slot_id}-expand`} style={{ borderBottom: '2px solid #bfdbfe' }}>
-                                                                <td colSpan={7} style={{ padding: '6px 14px 14px 14px', background: '#eff6ff' }}>
+                                                            <tr key={`${sl.slot_id}-expand`} className="border-b-2 border-red-200">
+                                                                <td colSpan={7} className="px-3.5 pt-1.5 pb-3.5 bg-red-50">
                                                                     <SlotRoomSelector
                                                                         slotId={sl.slot_id}
                                                                         classrooms={classrooms}
@@ -516,31 +470,34 @@ export default {
                             </div>
 
                             {/* ── Upload zone ── */}
-                            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px 22px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                                <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 14 }}>
-                                    Step 3 – Upload Reviewed Excel
-                                </p>
+                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-7 h-7 rounded-full bg-[#8B1A1A] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">3</div>
+                                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Upload Reviewed Excel</h3>
+                                </div>
                                 <div
-                                    className={`upload-zone${dragOver ? ' drag' : ''}`}
+                                    className={`border-2 border-dashed rounded-xl p-7 text-center cursor-pointer transition-all duration-200 ${
+                                        dragOver ? 'border-[#8B1A1A] bg-red-50' : 'border-slate-300 bg-slate-50/50 hover:border-[#8B1A1A] hover:bg-red-50'
+                                    }`}
                                     onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                                     onDragLeave={() => setDragOver(false)}
                                     onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files[0]); }}
                                     onClick={() => fileInputRef.current?.click()}
-                                    style={{ border: '2px dashed #cbd5e1', borderRadius: 10, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s', background: dragOver ? '#eff6ff' : '#fafafa' }}
                                 >
-                                    <div style={{ fontSize: 30, marginBottom: 6 }}>{uploading ? '⏳' : '📂'}</div>
-                                    <p style={{ fontSize: 14, fontWeight: 600, color: '#475569' }}>
+                                    <div className="text-3xl mb-1.5">{uploading ? '⏳' : '📂'}</div>
+                                    <p className="text-sm font-semibold text-slate-600">
                                         {uploading ? 'Uploading & saving…' : 'Drop reviewed Excel here, or click to browse'}
                                     </p>
-                                    <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>Only .xlsx accepted</p>
-                                    <input ref={fileInputRef} type="file" accept=".xlsx" style={{ display: 'none' }}
+                                    <p className="text-xs text-slate-400 mt-1">Only .xlsx accepted</p>
+                                    <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden"
                                         onChange={e => { handleUpload(e.target.files[0]); e.target.value = ''; }} />
                                 </div>
                                 <button
-                                    className="action-btn"
                                     disabled={uploading}
                                     onClick={() => fileInputRef.current?.click()}
-                                    style={{ marginTop: 10, width: '100%', padding: '11px 0', background: uploading ? '#94a3b8' : '#db070bff', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'filter 0.15s' }}
+                                    className={`mt-3 w-full py-3 text-white text-sm font-bold uppercase tracking-widest rounded-lg flex items-center justify-center gap-2 transition-all duration-200 ${
+                                        uploading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] hover:shadow-md cursor-pointer'
+                                    }`}
                                 >
                                     {uploading && <Spinner />}
                                     {uploading ? 'Saving to database…' : 'Upload & Save Seating Plan'}
@@ -549,29 +506,31 @@ export default {
                         </div>
 
                         {/* ── RIGHT ── */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        <div className="flex flex-col gap-5">
 
                             {/* Generate card */}
-                            <div style={{ background: 'linear-gradient(135deg, #db070bff 0%, #db070bff 100%)', borderRadius: 5, padding: '22px 20px', boxShadow: '0 0px 0px rgba(37,99,235,0.25)', color: '#fff' }}>
-                                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.7, marginBottom: 5 }}>Step 2</p>
-                                <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, lineHeight: 1.3 }}>Generate Seating Plan</h2>
-                                <p style={{ fontSize: 13, opacity: 0.82, lineHeight: 1.6, marginBottom: 16 }}>
-                                    1. The algorithm is applied for each slot using its own room config and exports a colour-coded Excel workbook.               
-                                 <br></br>2. Make the changes as you see fit then upload the excel.
+                            <div className="bg-gradient-to-br from-[#8B1A1A] to-[#a52422] rounded-xl p-5 shadow-lg text-white">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">2</div>
+                                    <h3 className="text-sm font-bold uppercase tracking-wider">Generate Seating Plan</h3>
+                                </div>
+                                <p className="text-[13px] opacity-80 leading-relaxed mb-4">
+                                    1. The algorithm is applied for each slot using its own room config and exports a colour-coded Excel workbook.
+                                    <br/>2. Make the changes as you see fit then upload the excel.
                                 </p>
 
                                 {/* Per-slot readiness list */}
-                                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 12px', marginBottom: 16, fontSize: 12 }}>
+                                <div className="bg-white/10 rounded-lg px-3 py-2.5 mb-4 text-xs">
                                     {slotsWithExams.length === 0 ? (
-                                        <span style={{ opacity: 0.7 }}>No slots with exams yet.</span>
+                                        <span className="opacity-70">No slots with exams yet.</span>
                                     ) : (
                                         slotsWithExams.map(sl => {
                                             const n  = (slotRoomConfig[sl.slot_id] ?? []).length;
                                             const ok = n > 0;
                                             return (
-                                                <div key={sl.slot_id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, alignItems: 'center' }}>
-                                                    <span style={{ opacity: 0.85 }}>{formatDate(sl.exam_date)} · {formatTime(sl.start_time)}</span>
-                                                    <span style={{ fontWeight: 700, fontSize: 11, color: ok ? '#6ee7b7' : '#fca5a5' }}>
+                                                <div key={sl.slot_id} className="flex justify-between mb-1 items-center">
+                                                    <span className="opacity-85">{formatDate(sl.exam_date)} · {formatTime(sl.start_time)}</span>
+                                                    <span className={`font-bold text-[11px] ${ok ? 'text-emerald-300' : 'text-red-300'}`}>
                                                         {ok ? `${n} rooms ✓` : '⚠ no rooms'}
                                                     </span>
                                                 </div>
@@ -581,10 +540,11 @@ export default {
                                 </div>
 
                                 <button
-                                    className="action-btn"
                                     disabled={generating || slotsWithExams.length === 0}
                                     onClick={handleGenerateExport}
-                                    style={{ width: '100%', padding: '12px 0', background: '#fff', color: '#1e40af', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'filter 0.15s' }}
+                                    className={`w-full py-3 bg-white text-[#8B1A1A] rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 ${
+                                        generating || slotsWithExams.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'
+                                    }`}
                                 >
                                     {generating && <Spinner />}
                                     {generating ? 'Generating…' : '⬇ Generate & Download Excel'}
@@ -592,30 +552,26 @@ export default {
                             </div>
 
                             {/* Legend */}
-                            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px 18px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                                <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 12 }}>Excel Lane Legend</p>
+                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-4">
+                                <p className="text-xs font-bold tracking-widest uppercase text-slate-400 mb-3">Excel Lane Legend</p>
                                 {[
-                                    ['#d9d2e9', 'Purple', 'Undivided room'],
-                                    ['#d9ead3', 'Green',  'Giant course lane'],
-                                    ['#fff2cc', 'Yellow', 'Other courses lane'],
-                                ].map(([color, label, desc]) => (
-                                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                        <div style={{ width: 26, height: 16, background: color, borderRadius: 4, border: '1px solid #e2e8f0', flexShrink: 0 }} />
-                                        <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{label}</span>
-                                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{desc}</span>
+                                    ['bg-[#d9d2e9]', 'Purple', 'Undivided room'],
+                                    ['bg-[#d9ead3]', 'Green',  'Giant course lane'],
+                                    ['bg-[#fff2cc]', 'Yellow', 'Other courses lane'],
+                                ].map(([bgClass, label, desc]) => (
+                                    <div key={label} className="flex items-center gap-2.5 mb-2">
+                                        <div className={`w-6 h-4 rounded border border-slate-200 flex-shrink-0 ${bgClass}`} />
+                                        <span className="text-[13px] font-semibold text-slate-700">{label}</span>
+                                        <span className="text-xs text-slate-400">{desc}</span>
                                     </div>
                                 ))}
                             </div>
 
                             {/* Info */}
-                            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 16px' }}>
-                                <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 6 }}>How it works</p>
-                                <ul style={{ fontSize: 12, color: '#166534', lineHeight: 1.65, paddingLeft: 16 }}>
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                                <p className="text-xs font-bold text-emerald-700 mb-1.5">How it works</p>
+                                <ul className="text-xs text-emerald-800 leading-relaxed pl-4 list-disc">
                                     <li>Each slot uses <strong>its own room list</strong></li>
-                                    <li></li>
-                                    <li></li>
-                                    <li></li>
-                                    <li> <strong></strong></li>
                                 </ul>
                             </div>
                         </div>
