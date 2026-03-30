@@ -147,6 +147,8 @@ export default function SeatingManager() {
     const [toast,         setToast]         = useState(null);
     const [dragOver,      setDragOver]      = useState(false);
     const [fetchError,    setFetchError]    = useState(null);   // stores server error message
+    const [pendingFile,   setPendingFile]   = useState(null);   // file staged for confirmation
+    const [showConfirm,   setShowConfirm]   = useState(false);  // confirmation modal visible
 
     // expandedSlots: Set<slot_id>
     const [expandedSlots,  setExpandedSlots]  = useState(new Set());
@@ -267,25 +269,46 @@ export default function SeatingManager() {
         }
     };
 
-    const handleUpload = async (file) => {
+    // Stage file for confirmation — don't upload yet
+    const handleUpload = (file) => {
         if (!file) return;
         if (!file.name.endsWith('.xlsx')) return notify('Please upload a .xlsx file.', 'error');
+        setPendingFile(file);
+        setShowConfirm(true);
+    };
+
+    // Actually upload after user confirms
+    const handleConfirmUpload = async () => {
+        setShowConfirm(false);
+        if (!pendingFile) return;
         setUploading(true);
         const form = new FormData();
-        form.append('seatingFile', file);
+        form.append('seatingFile', pendingFile);
         try {
             const res  = await fetch(`${API}/upload-seating`, { method: 'POST', headers: authHeaders(), body: form });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
-            notify(`✓ Saved! ${data.exams_processed} exams · ${data.allocations_saved} allocations.`, 'success');
+            let msg = `✓ Saved! ${data.exams_processed} exams · ${data.allocations_saved} allocations.`;
+            if (data.old_allocations_cleared > 0) {
+                msg += ` (Cleared ${data.old_allocations_cleared} old allocations)`;
+            }
+            notify(msg, 'success');
             setWorkflowStep(4);
             refreshStatus();
         } catch (err) {
             notify(`Upload failed: ${err.message}`, 'error');
         } finally {
             setUploading(false);
+            setPendingFile(null);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
+    };
+
+    const handleCancelUpload = () => {
+        setShowConfirm(false);
+        setPendingFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        notify('Upload cancelled.', 'info');
     };
 
     // ── Derived ───────────────────────────────────────────────────────────────
@@ -475,6 +498,18 @@ export default {
                                     <div className="w-7 h-7 rounded-full bg-[#8B1A1A] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">3</div>
                                     <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Upload Reviewed Excel</h3>
                                 </div>
+
+                                {/* ── Warning banner ── */}
+                                <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-4">
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-sm mt-0.5">⚠️</span>
+                                        <p className="text-[11px] text-amber-700 leading-relaxed">
+                                            <strong className="text-amber-800">Strict Upload Mode:</strong> Uploading will <strong>replace all existing seating allocations</strong>. 
+                                            Exam slots and scheduled courses are preserved.
+                                        </p>
+                                    </div>
+                                </div>
+
                                 <div
                                     className={`border-2 border-dashed rounded-xl p-7 text-center cursor-pointer transition-all duration-200 ${
                                         dragOver ? 'border-[#8B1A1A] bg-red-50' : 'border-slate-300 bg-slate-50/50 hover:border-[#8B1A1A] hover:bg-red-50'
@@ -578,6 +613,63 @@ export default {
                     </div>
                 </div>
             </div>
+            {/* ═══════════════════════════════════════════════════════════════════════
+                CONFIRMATION MODAL — Seating Upload
+                ═══════════════════════════════════════════════════════════════════════ */}
+            {showConfirm && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md mx-4 overflow-hidden">
+
+                        {/* Modal Header */}
+                        <div className="bg-red-600 px-6 py-4">
+                            <h3 className="text-white text-base font-bold tracking-wide">⚠ Confirm Seating Reset</h3>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="px-6 py-5">
+                            <p className="text-sm text-slate-700 leading-relaxed mb-4">
+                                This will <strong className="text-red-600">permanently delete</strong> all existing seating allocations and replace them with the data from your uploaded file.
+                            </p>
+                            <ul className="text-sm text-slate-600 space-y-2 mb-5">
+                                <li className="flex items-center gap-2">
+                                    <span className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xs font-bold flex-shrink-0">×</span>
+                                    All previous seating allocations
+                                </li>
+                            </ul>
+
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-5">
+                                <p className="text-xs text-emerald-700">
+                                    <strong>✓ Preserved:</strong> Exam time slots and scheduled courses will NOT be deleted.
+                                </p>
+                            </div>
+
+                            {pendingFile && (
+                                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                                    <p className="text-xs text-slate-600">
+                                        <strong>File:</strong> {pendingFile.name} ({(pendingFile.size / 1024).toFixed(1)} KB)
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+                            <button
+                                onClick={handleCancelUpload}
+                                className="px-5 py-2 bg-white text-slate-700 text-xs font-bold uppercase tracking-wider rounded-lg border border-slate-300 hover:bg-slate-100 transition-all cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmUpload}
+                                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer"
+                            >
+                                Yes, Reset & Upload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

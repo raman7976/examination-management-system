@@ -85,16 +85,39 @@ export const scheduleBatchExams = async (req, res) => {
     const { courses } = req.body;
     if (!courses || !Array.isArray(courses) || courses.length === 0)
         return res.status(400).json({ message: 'No courses provided to schedule.' });
+
+    const conn = await db.getConnection();
     try {
+        await conn.beginTransaction();
+
+        // ── HARD RESET: Wipe all previous course & seating data ──
+        // Order matters: seating_allocations has FK → scheduled_exams
+        const [deletedAllocations] = await conn.query('DELETE FROM seating_allocations');
+        const [deletedCourses]     = await conn.query('DELETE FROM scheduled_exams');
+
+        // ── Insert the fresh course data ──
         const values = courses.map(c => [c.slotId, c.courseName, c.instructor, c.studentCount]);
-        const [result] = await db.query(
+        const [result] = await conn.query(
             'INSERT INTO scheduled_exams (slot_id, course_name, instructor_name, student_count) VALUES ?',
             [values]
         );
-        res.status(201).json({ message: `Successfully scheduled ${result.affectedRows} courses!` });
+
+        await conn.commit();
+
+        res.status(201).json({
+            message: `Fresh start! Cleared ${deletedCourses.affectedRows} old courses & ${deletedAllocations.affectedRows} old allocations. Scheduled ${result.affectedRows} new courses.`,
+            cleared: {
+                old_courses:     deletedCourses.affectedRows,
+                old_allocations: deletedAllocations.affectedRows,
+            },
+            new_courses: result.affectedRows,
+        });
     } catch (error) {
+        await conn.rollback();
         console.error('Batch schedule error:', error);
         res.status(500).json({ message: 'Server Error', error: error.message });
+    } finally {
+        conn.release();
     }
 };
 
@@ -384,18 +407,14 @@ export const uploadAndSaveSeating = async (req, res) => {
                 errors:  parseErrors,
             });
 
-        // 3. Persist in a transaction
+        // 3. Persist in a transaction — HARD RESET: wipe ALL old allocations
         const conn = await db.getConnection();
         try {
             await conn.beginTransaction();
 
-            // Delete previous allocations for all affected exams
-            const ids = [...affectedExamIds];
-            const ph  = ids.map(() => '?').join(', ');
-            await conn.query(
-                `DELETE FROM seating_allocations WHERE scheduled_exam_id IN (${ph})`,
-                ids
-            );
+            // ── HARD RESET: Delete ALL previous seating allocations ──
+            // Not just affected exams — wipe everything so no stale data remains
+            const [deletedAllocations] = await conn.query('DELETE FROM seating_allocations');
 
             // Bulk insert new allocations
             if (parsedAllocations.length > 0) {
@@ -417,9 +436,10 @@ export const uploadAndSaveSeating = async (req, res) => {
             await conn.commit();
 
             res.status(200).json({
-                message:           'Seating plan saved successfully.',
+                message:           'Fresh start! Seating plan saved successfully.',
                 exams_processed:   affectedExamIds.size,
                 allocations_saved: parsedAllocations.length,
+                old_allocations_cleared: deletedAllocations.affectedRows,
                 warnings:          parseErrors,
             });
 
