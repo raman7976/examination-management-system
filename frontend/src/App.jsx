@@ -4,7 +4,9 @@ import ForgotPassword from './pages/ForgotPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import AddExam from './pages/AddExam.jsx';
 import AddCourse from './pages/AddCourse.jsx';
+import SmartScheduling from './pages/SmartScheduling.jsx';
 import SeatingManager from './pages/SeatingManager.jsx';
+import SeatingArrangement from './pages/SeatingArrangement.jsx';
 import ProtectedRoute from './components/ProtectedRoute'; // ✅ Import is perfect
 import './App.css';
 
@@ -27,7 +29,9 @@ function App() {
             {/* These are "Children" - they render inside the <Outlet /> */}
             <Route path="add-exam"        element={<AddExam />} />
             <Route path="add-course"      element={<AddCourse />} />
+            <Route path="smart-scheduling" element={<SmartScheduling />} />
             <Route path="seating-manager" element={<SeatingManager />} />
+            <Route path="seating-arrangement" element={<SeatingArrangement />} />
           </Route>
           
         </Route>

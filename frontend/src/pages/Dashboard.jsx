@@ -22,9 +22,11 @@ function DashboardLayout() {
   // 1. Define tabs in ONE place. 
   // If you add a 3rd tab tomorrow, you only change this array.
   const navigationTabs = [
+    { name: "Data Import", path: "/dashboard/add-course" },
     { name: "Add Exam Slot", path: "/dashboard/add-exam" },
-    { name: "Add Course to Slot", path: "/dashboard/add-course" },
+    { name: "Smart Scheduling", path: "/dashboard/smart-scheduling" },
     { name: "Seating Manager", path: "/dashboard/seating-manager" },
+    { name: "Seating Arrangement", path: "/dashboard/seating-arrangement" },
   ];
 
   return (

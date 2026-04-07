@@ -55,4 +55,24 @@ export const addBatchSlots = (data) => API.post('/exams/add-batch-slots', data);
 export const getSlots = () => API.get('/exams/available-slots');
 export const scheduleBatch = (data) => API.post('/exams/schedule-batch', data);
 
+// Upload / Data Ingestion Routes
+export const uploadCourses = (formData) =>
+    API.post('/upload/courses', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const uploadEnrollments = (formData) =>
+    API.post('/upload/enrollments', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const resetSemesterData = () => API.delete('/upload/reset');
+
+// Schedule Routes
+export const getExamSlots = () => API.get('/schedule/slots');
+export const getUnscheduledCourses = () => API.get('/schedule/unscheduled-courses');
+export const assignCoursesToSlot = (data) => API.post('/schedule/assign', data);
+
+// Seating Routes
+export const generateMicroPlan = (data) => API.post('/seating/generate-plan', data);
+export const getPlanView = (slotId, classroomId) => {
+    let url = `/seating/view-plan?slot_id=${slotId}`;
+    if (classroomId) url += `&classroom_id=${classroomId}`;
+    return API.get(url);
+};
+
 export default API;

@@ -4,6 +4,9 @@ import helmet from 'helmet'; // Adds essential security headers
 import morgan from 'morgan'; // Logs HTTP requests for easier debugging
 import userRouter from './routes/userRoutes.js';
 import examRoutes from './routes/examRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
+import scheduleRoutes from './routes/scheduleRoutes.js';
+import seatingRoutes from './routes/seatingRoutes.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -29,6 +32,9 @@ app.use(express.json());       // Parses incoming JSON payloads
 // ==========================================
 app.use('/api/v1/user', userRouter);
 app.use('/api/exams', examRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/schedule', scheduleRoutes);
+app.use('/api/seating', seatingRoutes);
 
 
 

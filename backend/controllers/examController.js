@@ -96,9 +96,10 @@ export const scheduleBatchExams = async (req, res) => {
         const [deletedCourses]     = await conn.query('DELETE FROM scheduled_exams');
 
         // ── Insert the fresh course data ──
-        const values = courses.map(c => [c.slotId, c.courseName, c.instructor, c.studentCount]);
+        // New schema: scheduled_exams only stores (slot_id, course_code)
+        const values = courses.map(c => [c.slotId, c.courseCode]);
         const [result] = await conn.query(
-            'INSERT INTO scheduled_exams (slot_id, course_name, instructor_name, student_count) VALUES ?',
+            'INSERT INTO scheduled_exams (slot_id, course_code) VALUES ?',
             [values]
         );
 
@@ -184,9 +185,7 @@ export const getSeatingStatus = async (req, res) => {
                 ...r,
                 has_seating:  Number(r.allocation_count) > 0,
                 exam_count:   Number(r.exam_count),
-                exam_date:    r.exam_date instanceof Date
-                    ? r.exam_date.toISOString().slice(0, 10)
-                    : String(r.exam_date).slice(0, 10),
+                exam_date:    r.exam_date,
             }))
         );
     } catch (error) {
@@ -251,10 +250,17 @@ export const generateAndExportAllSeating = async (req, res) => {
             return res.status(404).json({ message: 'No slots with scheduled exams found.' });
 
 
-
-
-        const [allCourses] = await db.execute('SELECT * FROM scheduled_exams ORDER BY student_count DESC');
-
+        // Load all scheduled exams with course data joined from courses table
+        const [allCourses] = await db.execute(`
+            SELECT se.id, se.slot_id, se.course_code,
+                   c.course_name, c.total_students AS student_count,
+                   GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructor_name
+            FROM   scheduled_exams se
+            JOIN   courses c ON se.course_code = c.course_code
+            LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+            GROUP BY se.id
+            ORDER BY c.total_students DESC
+        `);
 
         const coursesBySlot = allCourses.reduce((acc, course) => {
             if (!acc[course.slot_id]) acc[course.slot_id] = [];
@@ -465,10 +471,10 @@ export const getSeatingPlan = async (req, res) => {
         const [rows] = await db.execute(
             `SELECT
                  sa.id,
-                 se.course_name,
-                 se.instructor_name,
-                 se.student_count            AS total_students,
-                 c.room_name,
+                 co.course_name,
+                 GROUP_CONCAT(DISTINCT ci.instructor_name SEPARATOR ', ') AS instructor_name,
+                 co.total_students,
+                 cl.room_name,
                  sa.lane,
                  sa.student_count            AS seated,
                  sa.room_mode,
@@ -477,10 +483,13 @@ export const getSeatingPlan = async (req, res) => {
                  es.end_time
              FROM   seating_allocations  sa
              JOIN   scheduled_exams      se ON sa.scheduled_exam_id = se.id
-             JOIN   classrooms           c  ON sa.classroom_id      = c.id
+             JOIN   courses              co ON se.course_code       = co.course_code
+             LEFT JOIN course_instructors ci ON co.course_code      = ci.course_code
+             JOIN   classrooms           cl ON sa.classroom_id      = cl.id
              JOIN   exam_slots           es ON se.slot_id           = es.id
              WHERE  se.slot_id = ?
-             ORDER  BY c.location_order, sa.lane, se.course_name`,
+             GROUP BY sa.id
+             ORDER  BY cl.location_order, sa.lane, co.course_name`,
             [req.params.slotId]
         );
         res.status(200).json(rows);
@@ -518,12 +527,20 @@ function _buildExcelSheet(workbook, slot, courses, allocations, allRooms, enable
 
     const applyBorder = (cell) => { cell.border = allBorder; };
 
-    const fmtDate = (d) =>
-        d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+    const fmtDate = (d) => {
+        if (d instanceof Date) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+        return String(d).slice(0, 10);
+    };
 
     // ── ROW 1: Slot metadata ────────────────────────────────────────────────
+    const examDay = slot.exam_day || '';
     ws.addRow([
-        `Slot ${slot.id}  ·  ${fmtDate(slot.exam_date)}  (${slot.exam_day})  ·  ` +
+        `Slot ${slot.id}  ·  ${fmtDate(slot.exam_date)}  ${examDay ? `(${examDay})  ·  ` : '·  '}` +
         `${slot.start_time} – ${slot.end_time}  ·  ${courses.length} courses  ·  ` +
         `${courses.reduce((s, c) => s + c.student_count, 0)} students`
     ]);
@@ -601,7 +618,7 @@ function _buildExcelSheet(workbook, slot, courses, allocations, allRooms, enable
         const rowValues = [
             course.id,
             course.course_name,
-            course.instructor_name,
+            course.instructor_name || '',
             course.student_count,
         ];
 
@@ -669,7 +686,15 @@ export const previewSlotSeating = async (req, res) => {
 
     try {
         const [courses] = await db.execute(
-            'SELECT * FROM scheduled_exams WHERE slot_id = ? ORDER BY student_count DESC',
+            `SELECT se.id, se.slot_id, se.course_code,
+                    c.course_name, c.total_students AS student_count,
+                    GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructor_name
+             FROM   scheduled_exams se
+             JOIN   courses c ON se.course_code = c.course_code
+             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+             WHERE  se.slot_id = ?
+             GROUP BY se.id
+             ORDER BY c.total_students DESC`,
             [slotId]
         );
         if (!courses.length)
