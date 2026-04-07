@@ -255,8 +255,11 @@ export default function SeatingManager() {
             const url  = URL.createObjectURL(blob);
             const a    = document.createElement('a');
             a.href     = url;
+            // Try reading filename from Content-Disposition, fallback to dated name
             const cd   = res.headers.get('Content-Disposition') ?? '';
-            a.download = (cd.match(/filename="?([^"]+)"?/) ?? [])[1] ?? 'seating_plan.xlsx';
+            const match = cd.match(/filename="?([^"]+)"?/);
+            const dateStr = new Date().toISOString().slice(0, 10);
+            a.download = match?.[1] || `seating_plan_${dateStr}.xlsx`;
             document.body.appendChild(a); a.click(); a.remove();
             URL.revokeObjectURL(url);
 

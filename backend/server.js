@@ -18,7 +18,7 @@ const app = express();
 // 1. GLOBAL MIDDLEWARE
 // ==========================================
 app.use(helmet());             // Protects against common web vulnerabilities
-app.use(cors());               // Allows your frontend to talk to this backend
+app.use(cors({ exposedHeaders: ['Content-Disposition'] }));               // Allows your frontend to talk to this backend
 app.use(morgan('dev'));        // Logs requests 
 app.use(express.json());       // Parses incoming JSON payloads
 

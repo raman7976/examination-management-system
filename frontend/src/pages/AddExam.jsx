@@ -14,6 +14,8 @@ function AddExam() {
   const [editingSlot, setEditingSlot] = useState(null);    // slot id being edited
   const [editForm, setEditForm] = useState({ exam_date: '', exam_day: '', start_time: '', end_time: '' });
   const [deletingId, setDeletingId] = useState(null);      // slot id being deleted (for confirm)
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deleteAllLoading, setDeleteAllLoading] = useState(false);
 
   // ── Fetch existing slots on mount ──
   const fetchExistingSlots = async () => {
@@ -142,8 +144,23 @@ function AddExam() {
   const formatDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
   const formatTime = t => t ? t.slice(0, 5) : '';
 
+  // ── Delete All handler ──
+  const handleDeleteAll = async () => {
+    setDeleteAllLoading(true);
+    try {
+      const res = await API.delete('/exams/slots');
+      setMessage(res.data.message || 'All slots deleted.');
+      fetchExistingSlots();
+    } catch (err) {
+      setMessage('Error: ' + (err.response?.data?.message || 'Failed to delete all slots'));
+    } finally {
+      setDeleteAllLoading(false);
+      setConfirmDeleteAll(false);
+    }
+  };
+
   return (
-    <div className="max-w-3xl">
+    <div>
 
       {/* Page Header */}
       <div className="mb-8">
@@ -439,11 +456,42 @@ function AddExam() {
           </div>
         );
       })()}
-
       {/* Message */}
       {message && (
         <div className={`mt-6 p-4 rounded-lg text-xs font-semibold border ${message.includes('Error') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
           {message}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          DANGER ZONE — Delete All Slots
+          ═══════════════════════════════════════════════════════════════════════ */}
+      {existingSlots.length > 0 && (
+        <div className="rounded-lg overflow-hidden mt-8" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+          <div className="p-5">
+            <h3 className="text-sm font-bold text-red-800 uppercase tracking-wider mb-1">Danger Zone</h3>
+            <p className="text-xs text-red-600 mb-3 leading-relaxed">
+              Delete all existing exam slots from the database. <strong>This cannot be undone.</strong>
+            </p>
+            {!confirmDeleteAll ? (
+              <button onClick={() => setConfirmDeleteAll(true)}
+                className="px-5 py-2 text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 bg-red-600 hover:bg-red-700 cursor-pointer">
+                Delete All Exam Slots
+              </button>
+            ) : (
+              <div className="flex items-center gap-3 p-3 rounded-md" style={{ background: '#fee2e2', border: '1px solid #fca5a5' }}>
+                <span className="text-xs font-semibold text-red-800">Delete all {existingSlots.length} slots?</span>
+                <button onClick={handleDeleteAll} disabled={deleteAllLoading}
+                  className={`px-4 py-1.5 text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 ${deleteAllLoading ? 'bg-red-300 cursor-not-allowed' : 'bg-red-700 hover:bg-red-800 cursor-pointer'}`}>
+                  {deleteAllLoading ? 'Deleting...' : 'Yes, Delete All'}
+                </button>
+                <button onClick={() => setConfirmDeleteAll(false)} disabled={deleteAllLoading}
+                  className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 cursor-pointer" style={{ background: 'white', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

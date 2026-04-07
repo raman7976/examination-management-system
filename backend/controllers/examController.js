@@ -72,6 +72,16 @@ export const deleteExamSlot = async (req, res) => {
     }
 };
 
+export const deleteAllExamSlots = async (req, res) => {
+    try {
+        const [result] = await db.execute('DELETE FROM exam_slots');
+        res.json({ message: `All exam slots deleted (${result.affectedRows} removed).` });
+    } catch (error) {
+        console.error('Delete all slots error:', error);
+        res.status(500).json({ message: 'Server Error', error: error.message });
+    }
+};
+
 export const getAvailableSlots = async (req, res) => {
     try {
         const [rows] = await db.execute('SELECT * FROM exam_slots ORDER BY exam_date, start_time');

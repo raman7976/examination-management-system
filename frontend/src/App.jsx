@@ -7,6 +7,8 @@ import AddCourse from './pages/AddCourse.jsx';
 import SmartScheduling from './pages/SmartScheduling.jsx';
 import SeatingManager from './pages/SeatingManager.jsx';
 import SeatingArrangement from './pages/SeatingArrangement.jsx';
+import CourseSeatingPDF from './pages/CourseSeatingPDF.jsx';
+import PastExams from './pages/PastExams.jsx';
 import ProtectedRoute from './components/ProtectedRoute'; // ✅ Import is perfect
 import './App.css';
 
@@ -32,6 +34,8 @@ function App() {
             <Route path="smart-scheduling" element={<SmartScheduling />} />
             <Route path="seating-manager" element={<SeatingManager />} />
             <Route path="seating-arrangement" element={<SeatingArrangement />} />
+            <Route path="pdf-reports" element={<CourseSeatingPDF />} />
+            <Route path="past-exams" element={<PastExams />} />
           </Route>
           
         </Route>

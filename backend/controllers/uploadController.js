@@ -472,3 +472,69 @@ export const resetSemesterData = async (req, res) => {
         if (conn) conn.release();
     }
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GET /api/upload/courses
+//  Returns the course master list with optional search
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const getCourseList = async (req, res) => {
+    try {
+        const search = req.query.search || '';
+        let query = `
+            SELECT c.course_code, c.course_name, c.total_students,
+                   GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructors
+            FROM courses c
+            LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+        `;
+        const params = [];
+
+        if (search) {
+            query += ` WHERE c.course_code LIKE ? OR c.course_name LIKE ?`;
+            params.push(`%${search}%`, `%${search}%`);
+        }
+
+        query += ` GROUP BY c.course_code, c.course_name, c.total_students ORDER BY c.course_code ASC LIMIT 200`;
+
+        const [rows] = await db.query(query, params);
+        const [countRows] = await db.query('SELECT COUNT(*) as total FROM courses');
+
+        res.json({ success: true, courses: rows, total: countRows[0].total });
+    } catch (error) {
+        console.error('getCourseList error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch courses.' });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GET /api/upload/enrollments
+//  Returns the enrollment list with optional search
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const getEnrollmentList = async (req, res) => {
+    try {
+        const search = req.query.search || '';
+        let query = `
+            SELECT s.roll_number, s.name, s.email, s.branch,
+                   GROUP_CONCAT(ce.course_code SEPARATOR ', ') AS enrolled_courses
+            FROM students s
+            LEFT JOIN course_enrollments ce ON s.roll_number = ce.roll_number
+        `;
+        const params = [];
+
+        if (search) {
+            query += ` WHERE s.roll_number LIKE ? OR s.name LIKE ? OR s.branch LIKE ?`;
+            params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+        }
+
+        query += ` GROUP BY s.roll_number, s.name, s.email, s.branch ORDER BY s.roll_number ASC LIMIT 200`;
+
+        const [rows] = await db.query(query, params);
+        const [countRows] = await db.query('SELECT COUNT(*) as total FROM students');
+
+        res.json({ success: true, students: rows, total: countRows[0].total });
+    } catch (error) {
+        console.error('getEnrollmentList error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch enrollments.' });
+    }
+};

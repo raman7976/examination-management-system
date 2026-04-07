@@ -5,11 +5,11 @@ import { getExamSlots, generateMicroPlan, getPlanView } from '../api/api.js';
 export default function SeatingArrangement() {
     const [slots, setSlots] = useState([]);
     const [selectedSlotId, setSelectedSlotId] = useState('');
-    
+
     // Data grouped by classroom_id
     const [groupedPlanData, setGroupedPlanData] = useState({});
     const [loadingGrid, setLoadingGrid] = useState(false);
-    
+
     const [isGenerating, setIsGenerating] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -47,7 +47,7 @@ export default function SeatingArrangement() {
                 const res = await getPlanView(selectedSlotId);
                 if (res.data?.success) {
                     const data = res.data.data || [];
-                    
+
                     // Group data by classroom_id (or room_name)
                     const grouped = data.reduce((acc, row) => {
                         const roomId = row.classroom_id;
@@ -59,11 +59,11 @@ export default function SeatingArrangement() {
                             };
                         }
                         acc[roomId].data.push(row);
-                        
+
                         if (row.lane === 'P') acc[roomId].laneCounts.P++;
                         if (row.lane === 'G') acc[roomId].laneCounts.G++;
                         if (row.lane === 'Y') acc[roomId].laneCounts.Y++;
-                        
+
                         return acc;
                     }, {});
 
@@ -100,7 +100,7 @@ export default function SeatingArrangement() {
         try {
             const res = await generateMicroPlan({ slot_id: selectedSlotId });
             setMessage({ type: 'success', text: res.data?.message || 'Generated successfully!' });
-            
+
             // Reload grid for all rooms in this slot
             const gridRes = await getPlanView(selectedSlotId);
             if (gridRes.data?.success) {
@@ -142,25 +142,33 @@ export default function SeatingArrangement() {
     // Export individual room to Excel
     const handleExport = (e, roomId, roomData) => {
         e.stopPropagation(); // crucial to prevent accordion toggle
-        
+
         if (roomData.data.length === 0) return;
 
-        const formattedData = roomData.data.map(row => ({
+        const lanePri = { P: 1, G: 2, Y: 3 };
+        const sortedExportData = [...roomData.data].sort((a, b) => (lanePri[a.lane] || 99) - (lanePri[b.lane] || 99));
+        const formattedData = sortedExportData.map((row, idx) => ({
+            'S.No.': idx + 1,
             'Seat Number': row.seat_number,
             'Lane': row.lane === 'P' ? 'Purple' : row.lane === 'G' ? 'Green' : 'Yellow',
             'Roll No': row.roll_number,
             'Student Name': row.student_name || '',
+            'Section': row.section_name || '',
+            'Course Name': row.course_name || '',
             'Course Code': row.course_code
         }));
 
         const worksheet = XLSX.utils.json_to_sheet(formattedData);
-        
+
         // Auto-size columns heuristically
         worksheet['!cols'] = [
+            { wpx: 50 },  // S.No.
             { wpx: 100 }, // Seat Number
             { wpx: 80 },  // Lane
             { wpx: 120 }, // Roll No
             { wpx: 200 }, // Student Name
+            { wpx: 100 }, // Section
+            { wpx: 200 }, // Course Name
             { wpx: 120 }  // Course Code
         ];
 
@@ -197,27 +205,25 @@ export default function SeatingArrangement() {
                     <h1 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Micro-Seating View</h1>
                     <p className="text-sm text-slate-500 mt-1">Final Student-to-Chair Allocation</p>
                 </div>
-                
+
                 <button
                     onClick={handleGenerateMicroPlan}
                     disabled={isGenerating || !selectedSlotId}
-                    className={`uppercase tracking-wider text-xs font-bold px-4 py-2.5 rounded shadow-sm border transition-all ${
-                        isGenerating || !selectedSlotId
+                    className={`uppercase tracking-wider text-xs font-bold px-4 py-2.5 rounded shadow-sm border transition-all ${isGenerating || !selectedSlotId
                             ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                             : "bg-white text-[#8B1A1A] border-[#8B1A1A] hover:bg-red-50 hover:shadow-md cursor-pointer"
-                    }`}
+                        }`}
                 >
-                    {isGenerating ? 'Running Algorithm...' : '⚡ Run Seating Algorithm'}
+                    {isGenerating ? 'Running Algorithm...' : ' Run Seating Algorithm'}
                 </button>
             </div>
 
             {/* Status Message */}
             {message.text && (
-                <div className={`mb-6 p-4 rounded-lg border text-sm flex items-center justify-between shadow-sm animate-fade-in ${
-                    message.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' :
-                    message.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                    'bg-blue-50 text-blue-800 border-blue-200'
-                }`}>
+                <div className={`mb-6 p-4 rounded-lg border text-sm flex items-center justify-between shadow-sm animate-fade-in ${message.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' :
+                        message.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                            'bg-blue-50 text-blue-800 border-blue-200'
+                    }`}>
                     <span>{message.text}</span>
                     <button onClick={() => setMessage({ type: '', text: '' })} className="opacity-50 hover:opacity-100 text-lg leading-none">×</button>
                 </div>
@@ -237,7 +243,7 @@ export default function SeatingArrangement() {
                         <option value="">-- Choose Slot --</option>
                         {slots.map(s => (
                             <option key={s.id} value={s.id}>
-                                Slot {s.id}: {new Date(s.exam_date).toLocaleDateString()} ({s.start_time.slice(0,5)} - {s.end_time.slice(0,5)})
+                                Slot {s.id}: {new Date(s.exam_date).toLocaleDateString()} ({s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)})
                             </option>
                         ))}
                     </select>
@@ -261,19 +267,20 @@ export default function SeatingArrangement() {
                     roomEntries.map(([roomId, roomItem]) => {
                         const isOpen = openRooms.has(roomId);
                         const totalStudents = roomItem.data.length;
+                        const lanePriority = { P: 1, G: 2, Y: 3 };
+                        const sortedData = [...roomItem.data].sort((a, b) => (lanePriority[a.lane] || 99) - (lanePriority[b.lane] || 99));
 
                         return (
                             <div key={roomId} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all hover:shadow-md">
                                 {/* Accordion Header */}
-                                <div 
+                                <div
                                     className="px-6 py-4 bg-slate-50 flex items-center justify-between cursor-pointer hover:bg-slate-100 transition-colors"
                                     onClick={() => toggleRoom(roomId)}
                                 >
                                     {/* Left Side */}
                                     <div className="flex items-center gap-3 w-1/4">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                                            isOpen ? "bg-[#8B1A1A] text-white" : "bg-slate-200 text-slate-600"
-                                        }`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${isOpen ? "bg-[#8B1A1A] text-white" : "bg-slate-200 text-slate-600"
+                                            }`}>
                                             {isOpen ? '−' : '+'}
                                         </div>
                                         <div>
@@ -322,16 +329,22 @@ export default function SeatingArrangement() {
                                         <table className="w-full text-left border-collapse">
                                             <thead>
                                                 <tr className="bg-white border-b border-slate-200">
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">S.No.</th>
                                                     <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Seat Number</th>
                                                     <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Lane</th>
                                                     <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Roll No</th>
                                                     <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Student Name</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Section</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Course Name</th>
                                                     <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Course</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {roomItem.data.map((row, idx) => (
+                                                {sortedData.map((row, idx) => (
                                                     <tr key={idx} className="hover:bg-slate-50 transition-colors bg-white">
+                                                        <td className="px-6 py-2.5 text-xs text-slate-500 font-semibold text-center">
+                                                            {idx + 1}
+                                                        </td>
                                                         <td className="px-6 py-2.5 font-mono text-sm font-bold text-slate-700">
                                                             {row.seat_number}
                                                         </td>
@@ -345,6 +358,12 @@ export default function SeatingArrangement() {
                                                         </td>
                                                         <td className="px-6 py-2.5 text-xs text-slate-800 font-medium">
                                                             {row.student_name || <span className="text-slate-300 italic">Unknown</span>}
+                                                        </td>
+                                                        <td className="px-6 py-2.5 text-xs text-slate-600 font-medium">
+                                                            {row.section_name || '—'}
+                                                        </td>
+                                                        <td className="px-6 py-2.5 text-xs text-slate-700">
+                                                            {row.course_name || '—'}
                                                         </td>
                                                         <td className="px-6 py-2.5">
                                                             <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold tracking-widest rounded uppercase">

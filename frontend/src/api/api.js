@@ -61,6 +61,8 @@ export const uploadCourses = (formData) =>
 export const uploadEnrollments = (formData) =>
     API.post('/upload/enrollments', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const resetSemesterData = () => API.delete('/upload/reset');
+export const getCourseList = (search = '') => API.get(`/upload/courses?search=${encodeURIComponent(search)}`);
+export const getEnrollmentList = (search = '') => API.get(`/upload/enrollments?search=${encodeURIComponent(search)}`);
 
 // Schedule Routes
 export const getExamSlots = () => API.get('/schedule/slots');
@@ -74,5 +76,11 @@ export const getPlanView = (slotId, classroomId) => {
     if (classroomId) url += `&classroom_id=${classroomId}`;
     return API.get(url);
 };
+
+// Exam Session Routes
+export const saveExamSession = (data) => API.post('/seating/sessions/save', data);
+export const getExamSessions = () => API.get('/seating/sessions');
+export const getExamSessionById = (id) => API.get(`/seating/sessions/${id}`);
+export const deleteExamSession = (id) => API.delete(`/seating/sessions/${id}`);
 
 export default API;

@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../middleware/middleware1.js';
-import { uploadCourses, uploadEnrollments, resetSemesterData } from '../controllers/uploadController.js';
+import { uploadCourses, uploadEnrollments, resetSemesterData, getCourseList, getEnrollmentList } from '../controllers/uploadController.js';
 
 const router = express.Router();
 
@@ -81,5 +81,11 @@ router.post(
 
 // DELETE /api/upload/reset — Wipe semester data
 router.delete('/reset', resetSemesterData);
+
+// GET /api/upload/courses — Fetch course master list (with optional search)
+router.get('/courses', getCourseList);
+
+// GET /api/upload/enrollments — Fetch enrollment list (with optional search)
+router.get('/enrollments', getEnrollmentList);
 
 export default router;

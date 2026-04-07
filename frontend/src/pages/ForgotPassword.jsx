@@ -8,166 +8,172 @@ function ForgotPassword() {
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleOtpRequest = async () => {
+    if (!email) { setError("Please enter your email first."); return; }
+    setError("");
     try {
       await sendOtp({ email });
-      alert("📩 OTP sent to your console!");
+      setSuccess("OTP sent! Check your console/email.");
     } catch (error) {
-      alert("❌ " + (error.response?.data?.message || "Error"));
+      setError(error.response?.data?.message || "Failed to send OTP.");
     }
   };
 
   const handleReset = async () => {
-    if (newPassword !== confirmPassword) return alert("❌ Passwords do not match!");
+    if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
+    setError("");
+    setLoading(true);
     try {
       await resetPassword({ email, otp, newPassword });
-      alert("✅ Password Reset Successfully!");
+      setSuccess("Password reset successfully! You can now login.");
+      setError("");
     } catch (error) {
-      alert("❌ " + (error.response?.data?.message || "Reset Failed"));
+      setError(error.response?.data?.message || "Reset Failed.");
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleReset();
+  };
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8f7f4]">
+    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #faf9f7 0%, #f3f0ec 50%, #ece7e0 100%)' }}>
 
       {/* ── Top Bar ── */}
-      <header className="bg-[#8B1A1A] shadow-md">
-        <div className="w-full flex items-center justify-between px-8 py-3">
+      <header style={{ background: 'linear-gradient(90deg, #7a1518, #8B1A1A 40%, #8B1A1A 60%, #7a1518)' }}>
+        <div className="w-full flex items-center justify-between px-8 py-4">
           <div className="hidden sm:block">
-            <p className="text-white text-[25px] font-semibold tracking-wide leading-tight">
+            <p className="text-white text-2xl font-semibold tracking-wide" style={{ fontFamily: "'Inter', sans-serif", letterSpacing: '0.01em' }}>
               The LNM Institute of Information Technology
             </p>
-            <p className="text-red-200 text-[10px] tracking-widest uppercase">
+            <p className="text-[10px] tracking-[0.2em] uppercase mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
               Deemed-to-be-University · Jaipur
             </p>
           </div>
-          <img src={logo} alt="LNMIIT_LOGO" className="h-11 w-15  bg-white rounded p-1" />
+          <div className="flex items-center gap-4">
+            <span className="hidden md:block text-xs font-medium tracking-wider uppercase" style={{ color: 'rgba(255,255,255,0.5)' }}>Examination Portal</span>
+            <img src={logo} alt="LNMIIT_LOGO" className="h-11 w-auto object-contain bg-white rounded-sm" style={{ padding: '2px' }} />
+          </div>
         </div>
       </header>
+      <div className="h-[2px]" style={{ background: 'linear-gradient(90deg, #8B1A1A, #c2524a 30%, #d4978f 50%, #c2524a 70%, #8B1A1A)' }} />
 
-      {/* ── Thin Accent Stripe ── */}
-      <div className="h-[3px] bg-gradient-to-r from-[#8B1A1A] via-[#d4544a] to-[#8B1A1A]" />
-
-      {/* ── Main Content ── */}
+      {/* ── Main ── */}
       <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-[420px]">
 
-          {/* Card */}
-          <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
+          <div className="bg-white rounded-lg overflow-hidden" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)' }}>
 
-            {/* Card Header — Maroon band */}
-            <div className="bg-[#8B1A1A] px-8 py-5 text-center">
-              <h1 className="text-white text-lg font-semibold tracking-wide">
-                Forgot Password
+            {/* Card Header */}
+            <div className="px-8 pt-8 pb-6 text-center" style={{ background: 'linear-gradient(180deg, #8B1A1A 0%, #7a1518 100%)' }}>
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                </svg>
+              </div>
+              <h1 className="text-white text-lg font-semibold" style={{ fontFamily: "'Inter', sans-serif" }}>
+                Reset Password
               </h1>
-              <p className="text-red-200 text-[11px] mt-1 tracking-wider uppercase">
-                Reset your portal access
+              <p className="text-[11px] mt-1.5 tracking-wider uppercase" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Recover your portal access
               </p>
             </div>
 
             {/* Card Body */}
-            <div className="px-8 py-8">
+            <div className="px-8 py-7">
 
-              {/* Department Name — centered */}
-              <div className="flex justify-center mb-7">
-                <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
-                  Examination Department
-                </h2>
-              </div>
+              {error && (
+                <div className="mb-4 px-4 py-3 rounded-md text-sm" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="mb-4 px-4 py-3 rounded-md text-sm" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
+                  {success}
+                </div>
+              )}
 
-              {/* Form Fields */}
               <div className="space-y-4">
-
-                {/* Email */}
                 <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Email ID <span className="text-[#8B1A1A]">*</span>
-                    </label>
-                    <button
-                      onClick={handleOtpRequest}
-                      className="text-[10px] text-[#8B1A1A] hover:text-[#5e1111] font-bold hover:underline transition-colors uppercase tracking-widest"
-                    >
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-[11px] font-medium uppercase tracking-wider" style={{ color: '#64748b' }}>Email Address</label>
+                    <button onClick={handleOtpRequest} type="button"
+                      className="text-[10px] font-bold uppercase tracking-wider cursor-pointer bg-transparent border-none" style={{ color: '#8B1A1A' }}
+                      onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                      onMouseLeave={(e) => e.target.style.textDecoration = 'none'}>
                       Send OTP
                     </button>
                   </div>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={handleKeyDown}
                     placeholder="your-email@lnmiit.ac.in"
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm text-slate-700 placeholder:text-slate-300 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A] transition-all"
-                  />
+                    className="w-full rounded-md px-4 py-2.5 text-sm transition-all duration-150"
+                    style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                    onFocus={(e) => { e.target.style.borderColor = '#8B1A1A'; e.target.style.boxShadow = '0 0 0 3px rgba(139,26,26,0.08)'; }}
+                    onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }} />
                 </div>
 
-                {/* OTP */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Enter OTP <span className="text-[#8B1A1A]">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
+                  <label className="block text-[11px] font-medium uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>OTP Code</label>
+                  <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} onKeyDown={handleKeyDown}
                     placeholder="123456"
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm text-slate-700 placeholder:text-slate-300 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A] transition-all"
-                  />
+                    className="w-full rounded-md px-4 py-2.5 text-sm transition-all duration-150"
+                    style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                    onFocus={(e) => { e.target.style.borderColor = '#8B1A1A'; e.target.style.boxShadow = '0 0 0 3px rgba(139,26,26,0.08)'; }}
+                    onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }} />
                 </div>
 
-                {/* New Password */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    New Password <span className="text-[#8B1A1A]">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                  <label className="block text-[11px] font-medium uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>New Password</label>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} onKeyDown={handleKeyDown}
                     placeholder="••••••••"
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm text-slate-700 placeholder:text-slate-300 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A] transition-all"
-                  />
+                    className="w-full rounded-md px-4 py-2.5 text-sm transition-all duration-150"
+                    style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                    onFocus={(e) => { e.target.style.borderColor = '#8B1A1A'; e.target.style.boxShadow = '0 0 0 3px rgba(139,26,26,0.08)'; }}
+                    onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }} />
                 </div>
 
-                {/* Confirm Password */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Confirm Password <span className="text-[#8B1A1A]">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  <label className="block text-[11px] font-medium uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>Confirm Password</label>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onKeyDown={handleKeyDown}
                     placeholder="••••••••"
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm text-slate-700 placeholder:text-slate-300 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A] transition-all"
-                  />
+                    className="w-full rounded-md px-4 py-2.5 text-sm transition-all duration-150"
+                    style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                    onFocus={(e) => { e.target.style.borderColor = '#8B1A1A'; e.target.style.boxShadow = '0 0 0 3px rgba(139,26,26,0.08)'; }}
+                    onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }} />
                 </div>
-
               </div>
 
-              {/* Actions */}
-              <div className="mt-8 space-y-3">
-                <button
-                  onClick={handleReset}
-                  className="w-full bg-[#8B1A1A] hover:bg-[#721515] active:bg-[#5e1111] text-white font-semibold py-3 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 text-sm tracking-wide uppercase"
-                >
-                  Set New Password
+              <div className="mt-7">
+                <button onClick={handleReset} disabled={loading}
+                  className="w-full text-white font-semibold py-3 rounded-md text-sm tracking-wide uppercase transition-all duration-200"
+                  style={{
+                    background: loading ? '#a0a0a0' : 'linear-gradient(180deg, #8B1A1A 0%, #751616 100%)',
+                    boxShadow: loading ? 'none' : '0 1px 2px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.1)',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                  }}
+                  onMouseEnter={(e) => { if (!loading) e.target.style.background = 'linear-gradient(180deg, #751616 0%, #5e1111 100%)'; }}
+                  onMouseLeave={(e) => { if (!loading) e.target.style.background = 'linear-gradient(180deg, #8B1A1A 0%, #751616 100%)'; }}>
+                  {loading ? 'Resetting...' : 'Set New Password'}
                 </button>
 
-                <div className="text-center">
+                <div className="text-center mt-4">
                   <Link to="/">
-                    <button className="text-xs text-[#8B1A1A] hover:text-[#5e1111] font-medium hover:underline transition-colors mt-2">
-                      Move to Login?
-                    </button>
+                    <span className="text-xs font-medium hover:underline transition-colors" style={{ color: '#8B1A1A' }}>
+                      ← Back to Login
+                    </span>
                   </Link>
                 </div>
               </div>
-
             </div>
 
-            {/* Card Footer */}
-            <div className="bg-slate-50 border-t border-slate-100 px-8 py-3 text-center">
-              <p className="text-[10px] text-slate-400 tracking-wide uppercase">
+            <div className="px-8 py-3 text-center" style={{ background: '#fafaf9', borderTop: '1px solid #f1f1ef' }}>
+              <p className="text-[10px] tracking-wider uppercase" style={{ color: '#a8a29e' }}>
                 Secure · Encrypted · Institutional Access
               </p>
             </div>
@@ -176,12 +182,11 @@ function ForgotPassword() {
         </div>
       </main>
 
-      {/* ── Footer ── */}
-      <footer className="bg-[#8B1A1A] py-5 px-6 text-center">
-        <p className="text-red-100 text-xs font-medium tracking-wide">
+      <footer className="py-5 px-6 text-center" style={{ background: 'linear-gradient(90deg, #7a1518, #8B1A1A 40%, #8B1A1A 60%, #7a1518)' }}>
+        <p className="text-xs font-medium tracking-wide" style={{ color: 'rgba(255,255,255,0.8)' }}>
           The LNM Institute of Information Technology, Jaipur
         </p>
-        <p className="text-red-300/60 text-[10px] mt-1 tracking-wider">
+        <p className="text-[10px] mt-1 tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>
           Deemed-to-be-University under Section 3 of UGC Act, 1956
         </p>
       </footer>

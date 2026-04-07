@@ -165,7 +165,7 @@ function SmartScheduling() {
 
       {/* ── Page Header ── */}
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">📅 Smart Scheduling</h2>
+        <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Smart Scheduling</h2>
         <p className="text-sm text-slate-500 mt-1">
           Select an exam slot, then assign unscheduled courses to it.
         </p>

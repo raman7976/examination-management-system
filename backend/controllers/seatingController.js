@@ -36,6 +36,7 @@ export const generateMicroPlan = async (req, res) => {
 
         const newPlans = [];
         const courseStudentOffset = {}; // Tracks next available student index per course
+        const seatOffset = {};          // Tracks next available seat index per (classroom_id + lane)
 
         // 3. For each allocation, fetch students, fetch chairs, and Zip them!
         for (const alloc of allocations) {
@@ -60,10 +61,12 @@ export const generateMicroPlan = async (req, res) => {
                 ORDER BY seq_order ASC
             `, [alloc.classroom_id, alloc.lane]);
 
+            // Key fix: track which seats have already been used in this room+lane
+            const seatKey = `${alloc.classroom_id}_${alloc.lane}`;
+            let chairIdx = seatOffset[seatKey] || 0;
             let allocatedCount = 0;
-            let chairIdx = 0;
 
-            // Zip 1-to-1
+            // Zip 1-to-1, starting from the NEXT available seat in this room+lane
             while (allocatedCount < alloc.student_count && courseTracker.index < courseTracker.students.length && chairIdx < chairs.length) {
                 const student = courseTracker.students[courseTracker.index];
                 const chair = chairs[chairIdx];
@@ -78,6 +81,9 @@ export const generateMicroPlan = async (req, res) => {
                 chairIdx++;
                 allocatedCount++;
             }
+
+            // Update seat offset so the next course in this room+lane continues from here
+            seatOffset[seatKey] = chairIdx;
         }
 
         // 4. Bulk INSERT IGNORE into individual_seating_plans
@@ -124,12 +130,15 @@ export const getPlanView = async (req, res) => {
                 sa.lane, 
                 isp.roll_number, 
                 st.name AS student_name, 
+                st.section_name,
+                c.course_name,
                 se.course_code,
                 cl.room_name,
                 sa.classroom_id
             FROM individual_seating_plans isp
             JOIN seating_allocations sa ON isp.allocation_id = sa.id
             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+            JOIN courses c ON se.course_code = c.course_code
             JOIN students st ON isp.roll_number = st.roll_number
             JOIN classroom_seats cs ON (cs.classroom_id = sa.classroom_id AND cs.lane = sa.lane AND cs.seat_number = isp.seat_number)
             JOIN classrooms cl ON sa.classroom_id = cl.id
@@ -142,7 +151,7 @@ export const getPlanView = async (req, res) => {
             params.push(classroom_id);
         }
 
-        query += ' ORDER BY cl.location_order ASC, cs.seq_order ASC';
+        query += ' ORDER BY cl.location_order ASC, sa.lane ASC, cs.seq_order ASC';
 
         const [rows] = await db.execute(query, params);
         res.status(200).json({ success: true, count: rows.length, data: rows });

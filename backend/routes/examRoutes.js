@@ -7,6 +7,7 @@ import {
     addBatchExamSlots,
     updateExamSlot,
     deleteExamSlot,
+    deleteAllExamSlots,
 
     // Phase 2
     getAvailableSlots,
@@ -80,6 +81,7 @@ router.use(protect);
 router.post('/add-batch-slots', addBatchExamSlots);
 router.put('/slots/:id', updateExamSlot);
 router.delete('/slots/:id', deleteExamSlot);
+router.delete('/slots', deleteAllExamSlots);
 
 
 
