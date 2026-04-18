@@ -3,8 +3,30 @@ import AdmZip from 'adm-zip';
 import XLSX from 'xlsx';
 import db from '../config/mysql.js';
 
+
+
+function getCellValue(cell) {
+    const val = cell?.value;
+    if (val == null) return '';
+    
+    // If the cell contains an object, extract the actual text
+    if (typeof val === 'object') {
+        if (val.richText) {
+            return val.richText.map(rt => rt.text).join(''); // Extract from Rich Text
+        }
+        if (val.text) {
+            return val.text; // Extract from Hyperlink
+        }
+        if (val.result !== undefined) {
+            return String(val.result); // Extract from Formula
+        }
+    }
+    
+    // Fallback for primitive types (strings, numbers)
+    return String(val);
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
-//  HELPER: Bulletproof header mapping
 //  Converts to lowercase AND strips ALL spaces/underscores
 //  'Course Name' / 'COURSENAME' / 'Course_Name' / 'course name' → 'coursename'
 // ═════════════════════════════════════════════════════════════════════════════
@@ -62,20 +84,21 @@ export const uploadCourses = async (req, res) => {
         worksheet.eachRow((row, rowNumber) => {
             if (rowNumber === 1) return; // skip header
 
-            const courseCode  = String(row.getCell(colCode).value ?? '').trim();
-            const courseName = String(row.getCell(colName).value ?? '').trim();
+    // USE THE HELPER FUNCTION HERE
+    const courseCode = getCellValue(row.getCell(colCode)).trim();
+    const courseName = getCellValue(row.getCell(colName)).trim();
 
-            if (!courseCode || !courseName) return; // skip empty rows
+    if (!courseCode || !courseName) return; // skip empty rows
 
-            // Instructor column may contain multiple names separated by commas
-            const rawInstructor = colInstructor ? String(row.getCell(colInstructor).value ?? '').trim() : '';
-            const instructors = rawInstructor
-                ? rawInstructor.split(',').map(name => name.trim()).filter(Boolean)
-                : [];
+    const rawInstructor = colInstructor ? getCellValue(row.getCell(colInstructor)).trim() : '';
+    const instructors = rawInstructor
+        ? rawInstructor.split(',').map(name => name.trim()).filter(Boolean)
+        : [];
 
-            const totalStudents = colStudents ? parseInt(row.getCell(colStudents).value, 10) || 0 : 0;
+    const rawStudents = colStudents ? getCellValue(row.getCell(colStudents)).trim() : '0';
+    const totalStudents = parseInt(rawStudents, 10) || 0;
 
-            courses.push({ courseCode, courseName, instructors, totalStudents });
+    courses.push({ courseCode, courseName, instructors, totalStudents });
         });
 
         if (courses.length === 0)
