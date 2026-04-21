@@ -3,8 +3,22 @@ import API from '../api/api.js';
 
 function AddExam() {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [skipWeekends, setSkipWeekends] = useState(true);
+  const [skipSaturdays, setSkipSaturdays] = useState(true);
+  const [skipSundays, setSkipSundays] = useState(true);
+  const [skipDates, setSkipDates] = useState([]);
+  const [particularDate, setParticularDate] = useState('');
   const [dailySlots, setDailySlots] = useState([{ startTime: '', endTime: '' }]);
+
+  const handleAddSkipDate = () => {
+    if (particularDate && !skipDates.includes(particularDate)) {
+      setSkipDates([...skipDates, particularDate]);
+      setParticularDate('');
+    }
+  };
+
+  const handleRemoveSkipDate = (dateToRemove) => {
+    setSkipDates(skipDates.filter(d => d !== dateToRemove));
+  };
   const [generatedSlots, setGeneratedSlots] = useState([]);
   const [message, setMessage] = useState('');
 
@@ -54,14 +68,22 @@ function AddExam() {
 
     while (current <= end) {
       const dayOfWeek = current.getDay(); // 0 is Sunday, 6 is Saturday
+      const dateString = current.toISOString().split('T')[0];
       
-      // Skip weekends if checkbox is checked
-      if (skipWeekends && (dayOfWeek === 0 || dayOfWeek === 6)) {
+      // Skip specific days and dates
+      if (skipSundays && dayOfWeek === 0) {
+        current.setDate(current.getDate() + 1);
+        continue;
+      }
+      if (skipSaturdays && dayOfWeek === 6) {
+        current.setDate(current.getDate() + 1);
+        continue;
+      }
+      if (skipDates.includes(dateString)) {
         current.setDate(current.getDate() + 1);
         continue;
       }
 
-      const dateString = current.toISOString().split('T')[0];
       const dayName = current.toLocaleDateString('en-US', { weekday: 'long' });
 
       // Create a slot for every time block defined
@@ -169,126 +191,6 @@ function AddExam() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          EXISTING SLOTS TABLE
-          ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden mb-8">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {existingSlots.length}
-            </div>
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Existing Exam Slots</h3>
-          </div>
-          <button onClick={fetchExistingSlots} className="text-xs text-slate-500 hover:text-slate-700 transition-colors cursor-pointer bg-transparent border-none">
-            ↻ Refresh
-          </button>
-        </div>
-
-        {loadingSlots ? (
-          <div className="p-10 text-center text-slate-400 text-sm">Loading slots…</div>
-        ) : existingSlots.length === 0 ? (
-          <div className="p-10 text-center text-slate-400 text-sm">
-            No exam slots found. Use the form below to generate some.
-          </div>
-        ) : (
-          <div className="max-h-80 overflow-y-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500 sticky top-0 border-b border-slate-200">
-                <tr>
-                  <th className="p-3 font-bold tracking-wider">Date</th>
-                  <th className="p-3 font-bold tracking-wider">Day</th>
-                  <th className="p-3 font-bold tracking-wider">Start</th>
-                  <th className="p-3 font-bold tracking-wider">End</th>
-                  <th className="p-3 font-bold tracking-wider text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {existingSlots.map((slot, idx) => (
-                  <tr key={slot.id} className={`border-b border-slate-100 transition-colors ${editingSlot === slot.id ? 'bg-amber-50' : 'hover:bg-[#fef2f2]'}`}>
-                    {editingSlot === slot.id ? (
-                      /* ── Inline Edit Mode ── */
-                      <>
-                        <td className="p-2">
-                          <input
-                            type="date"
-                            value={editForm.exam_date}
-                            onChange={e => handleEditDateChange(e.target.value)}
-                            className="w-full text-sm p-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A]"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <span className="text-sm text-slate-600">{editForm.exam_day}</span>
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="time"
-                            value={editForm.start_time}
-                            onChange={e => setEditForm({ ...editForm, start_time: e.target.value })}
-                            className="w-full text-sm p-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A]"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="time"
-                            value={editForm.end_time}
-                            onChange={e => setEditForm({ ...editForm, end_time: e.target.value })}
-                            className="w-full text-sm p-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A]"
-                          />
-                        </td>
-                        <td className="p-2 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={handleEditSave} className="px-3 py-1 bg-[#8B1A1A] text-white text-xs font-bold rounded-md hover:bg-[#721515] transition-colors cursor-pointer">Save</button>
-                            <button onClick={cancelEdit} className="px-3 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded-md hover:bg-slate-300 transition-colors cursor-pointer">Cancel</button>
-                          </div>
-                        </td>
-                      </>
-                    ) : (
-                      /* ── Normal Display Mode ── */
-                      <>
-                        <td className="p-3">
-                          <span className="font-semibold text-slate-700">{formatDate(slot.exam_date)}</span>
-                        </td>
-                        <td className="p-3 text-slate-500">{slot.exam_day}</td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 bg-[#fef2f2] text-[#8B1A1A] text-xs font-semibold rounded-md border border-[#8B1A1A]/20">
-                            {formatTime(slot.start_time)}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 bg-[#fef2f2] text-[#8B1A1A] text-xs font-semibold rounded-md border border-[#8B1A1A]/20">
-                            {formatTime(slot.end_time)}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center">
-                          {deletingId === slot.id ? (
-                            /* Confirm Delete */
-                            <div className="flex items-center justify-center gap-2">
-                              <span className="text-xs text-red-600 font-semibold">Delete?</span>
-                              <button onClick={() => handleDelete(slot.id)} className="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded hover:bg-red-700 transition-colors cursor-pointer">Yes</button>
-                              <button onClick={() => setDeletingId(null)} className="px-2 py-0.5 bg-slate-200 text-slate-700 text-xs font-bold rounded hover:bg-slate-300 transition-colors cursor-pointer">No</button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-center gap-2">
-                              <button onClick={() => startEdit(slot)} className="px-2.5 py-1 bg-white text-[#8B1A1A] text-xs font-bold rounded-md border border-[#8B1A1A]/30 hover:bg-[#fef2f2] hover:border-[#8B1A1A] transition-all cursor-pointer">
-                                Edit
-                              </button>
-                              <button onClick={() => setDeletingId(slot.id)} className="px-2.5 py-1 bg-white text-red-600 text-xs font-bold rounded-md border border-red-200 hover:bg-red-50 hover:border-red-400 transition-all cursor-pointer">
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════════
           GENERATE FORM (existing — unchanged)
           ═══════════════════════════════════════════════════════════════════════ */}
       <form onSubmit={handleGeneratePreview} className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
@@ -324,15 +226,64 @@ function AddExam() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input 
-                type="checkbox" 
-                id="skipWeekends"
-                checked={skipWeekends}
-                onChange={(e) => setSkipWeekends(e.target.checked)}
-                className="accent-[#8B1A1A] w-4 h-4"
-              />
-              <label htmlFor="skipWeekends" className="text-sm text-slate-600 cursor-pointer">Skip Weekends (Sat & Sun)</label>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="skipSaturdays"
+                    checked={skipSaturdays}
+                    onChange={(e) => setSkipSaturdays(e.target.checked)}
+                    className="accent-[#8B1A1A] w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="skipSaturdays" className="text-sm text-slate-600 cursor-pointer">Skip Saturdays</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="skipSundays"
+                    checked={skipSundays}
+                    onChange={(e) => setSkipSundays(e.target.checked)}
+                    className="accent-[#8B1A1A] w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="skipSundays" className="text-sm text-slate-600 cursor-pointer">Skip Sundays</label>
+                </div>
+              </div>
+              
+              <div className="space-y-1.5 max-w-sm">
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Skip Particular Dates</label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="date" 
+                    className="flex-1 text-sm p-2 bg-slate-50/50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A] transition-all"
+                    value={particularDate}
+                    onChange={(e) => setParticularDate(e.target.value)}
+                  />
+                  <button 
+                    type="button" 
+                    onClick={handleAddSkipDate}
+                    className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold uppercase rounded-lg transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+                {skipDates.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {skipDates.map((date, idx) => (
+                      <span key={idx} className="inline-flex items-center gap-1.5 px-2 py-1 bg-slate-100 text-slate-600 text-xs font-semibold rounded-md border border-slate-200">
+                        {date}
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemoveSkipDate(date)}
+                          className="text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -462,6 +413,126 @@ function AddExam() {
           {message}
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          EXISTING SLOTS TABLE
+          ═══════════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden mt-8 mb-8">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              {existingSlots.length}
+            </div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Existing Exam Slots</h3>
+          </div>
+          <button onClick={fetchExistingSlots} className="text-xs text-slate-500 hover:text-slate-700 transition-colors cursor-pointer bg-transparent border-none">
+            ↻ Refresh
+          </button>
+        </div>
+
+        {loadingSlots ? (
+          <div className="p-10 text-center text-slate-400 text-sm">Loading slots…</div>
+        ) : existingSlots.length === 0 ? (
+          <div className="p-10 text-center text-slate-400 text-sm">
+            No exam slots found. Use the form below to generate some.
+          </div>
+        ) : (
+          <div className="max-h-80 overflow-y-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500 sticky top-0 border-b border-slate-200">
+                <tr>
+                  <th className="p-3 font-bold tracking-wider">Date</th>
+                  <th className="p-3 font-bold tracking-wider">Day</th>
+                  <th className="p-3 font-bold tracking-wider">Start</th>
+                  <th className="p-3 font-bold tracking-wider">End</th>
+                  <th className="p-3 font-bold tracking-wider text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {existingSlots.map((slot, idx) => (
+                  <tr key={slot.id} className={`border-b border-slate-100 transition-colors ${editingSlot === slot.id ? 'bg-amber-50' : 'hover:bg-[#fef2f2]'}`}>
+                    {editingSlot === slot.id ? (
+                      /* ── Inline Edit Mode ── */
+                      <>
+                        <td className="p-2">
+                          <input
+                            type="date"
+                            value={editForm.exam_date}
+                            onChange={e => handleEditDateChange(e.target.value)}
+                            className="w-full text-sm p-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A]"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <span className="text-sm text-slate-600">{editForm.exam_day}</span>
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="time"
+                            value={editForm.start_time}
+                            onChange={e => setEditForm({ ...editForm, start_time: e.target.value })}
+                            className="w-full text-sm p-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A]"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="time"
+                            value={editForm.end_time}
+                            onChange={e => setEditForm({ ...editForm, end_time: e.target.value })}
+                            className="w-full text-sm p-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/30 focus:border-[#8B1A1A]"
+                          />
+                        </td>
+                        <td className="p-2 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={handleEditSave} className="px-3 py-1 bg-[#8B1A1A] text-white text-xs font-bold rounded-md hover:bg-[#721515] transition-colors cursor-pointer">Save</button>
+                            <button onClick={cancelEdit} className="px-3 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded-md hover:bg-slate-300 transition-colors cursor-pointer">Cancel</button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      /* ── Normal Display Mode ── */
+                      <>
+                        <td className="p-3">
+                          <span className="font-semibold text-slate-700">{formatDate(slot.exam_date)}</span>
+                        </td>
+                        <td className="p-3 text-slate-500">{slot.exam_day}</td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 bg-[#fef2f2] text-[#8B1A1A] text-xs font-semibold rounded-md border border-[#8B1A1A]/20">
+                            {formatTime(slot.start_time)}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 bg-[#fef2f2] text-[#8B1A1A] text-xs font-semibold rounded-md border border-[#8B1A1A]/20">
+                            {formatTime(slot.end_time)}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          {deletingId === slot.id ? (
+                            /* Confirm Delete */
+                            <div className="flex items-center justify-center gap-2">
+                              <span className="text-xs text-red-600 font-semibold">Delete?</span>
+                              <button onClick={() => handleDelete(slot.id)} className="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded hover:bg-red-700 transition-colors cursor-pointer">Yes</button>
+                              <button onClick={() => setDeletingId(null)} className="px-2 py-0.5 bg-slate-200 text-slate-700 text-xs font-bold rounded hover:bg-slate-300 transition-colors cursor-pointer">No</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={() => startEdit(slot)} className="px-2.5 py-1 bg-white text-[#8B1A1A] text-xs font-bold rounded-md border border-[#8B1A1A]/30 hover:bg-[#fef2f2] hover:border-[#8B1A1A] transition-all cursor-pointer">
+                                Edit
+                              </button>
+                              <button onClick={() => setDeletingId(slot.id)} className="px-2.5 py-1 bg-white text-red-600 text-xs font-bold rounded-md border border-red-200 hover:bg-red-50 hover:border-red-400 transition-all cursor-pointer">
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════
           DANGER ZONE — Delete All Slots

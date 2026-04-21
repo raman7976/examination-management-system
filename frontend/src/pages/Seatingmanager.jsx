@@ -191,10 +191,16 @@ export default function SeatingManager() {
                 setClassrooms(roomList);
                 setFetchError(null);
 
-                // Default: all rooms enabled for every slot
-                const allIds = roomList.map(r => r.id);
+                // Default: all rooms enabled for every slot, except LH-11, LH-12, and CP Lab
+                const defaultIds = roomList
+                    .filter(r => {
+                        const name = r.room_name.toLowerCase().trim();
+                        return !(name === 'lh-11' || name === 'lh-12' || name === 'cp' || name === 'cp lab' || name === 'cplab');
+                    })
+                    .map(r => r.id);
+
                 const init   = {};
-                slotList.forEach(s => { init[s.slot_id] = [...allIds]; });
+                slotList.forEach(s => { init[s.slot_id] = [...defaultIds]; });
                 setSlotRoomConfig(init);
 
             } catch (err) {

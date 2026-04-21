@@ -71,7 +71,7 @@ function AddCourse() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([['Course code', 'Course Name', 'Instructor', 'Total Student']]);
+    const ws = XLSX.utils.aoa_to_sheet([['Course code', 'Course Name', 'Short Name', 'Instructor', 'Total Student']]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Course Template");
     XLSX.writeFile(wb, "Course_Template.xlsx");
@@ -256,6 +256,7 @@ function AddCourse() {
                 Upload an <strong>.xlsx</strong> file. Expected columns:
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono ml-1">Course code</code>,
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Course Name</code>,
+                <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Short Name</code>,
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Instructor</code>,
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Total Student</code>
               </p>
@@ -406,6 +407,7 @@ function AddCourse() {
                     <tr>
                       <th className="px-3 py-2 font-bold">Code</th>
                       <th className="px-3 py-2 font-bold">Course Name</th>
+                      <th className="px-3 py-2 font-bold">Short Name</th>
                       <th className="px-3 py-2 font-bold text-right">Students</th>
                     </tr>
                   </thead>
@@ -416,6 +418,7 @@ function AddCourse() {
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                         <td className="px-3 py-2 text-xs font-semibold" style={{ color: '#8B1A1A' }}>{c.course_code}</td>
                         <td className="px-3 py-2 text-xs text-slate-600 truncate max-w-[140px]" title={c.course_name}>{c.course_name}</td>
+                        <td className="px-3 py-2 text-xs text-slate-500">{c.short_name || '-'}</td>
                         <td className="px-3 py-2 text-xs text-slate-500 text-right font-medium">{c.total_students}</td>
                       </tr>
                     ))}

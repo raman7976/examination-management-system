@@ -364,8 +364,8 @@ export const uploadAndSaveSeating = async (req, res) => {
         const parseErrors       = [];
 
         workbook.eachSheet(worksheet => {
-            // Only process sheets whose name matches slot_<id>
-            if (!/^slot_\d+$/.test(worksheet.name)) return;
+            // Only process sheets whose name contains slot_<id>
+            if (!/slot_\d+/.test(worksheet.name)) return;
 
             // ── Build column map from KEY ROW (row 3) ────────────────────────
             // Format: "LH-1|P", "LH-9|G", "LH-9|Y"
@@ -513,7 +513,19 @@ export const getSeatingPlan = async (req, res) => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 function _buildExcelSheet(workbook, slot, courses, allocations, allRooms, enabledRoomIds) {
-    const ws = workbook.addWorksheet(`slot_${slot.id}`);
+    // Build a human-readable sheet name: "Mon 21-04 9:00-12:00 (slot_1)"
+    const fmtSheetDate = (d) => {
+        if (d instanceof Date) return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        return String(d).slice(5, 10).split('-').reverse().join('-');
+    };
+    const fmtTime = (t) => String(t).slice(0, 5).replace(/:/g, '.'); // "09:00:00" → "09.00"
+    const dayStr   = slot.exam_day ? `${slot.exam_day.slice(0,3)} ` : '';
+    const dateStr  = fmtSheetDate(slot.exam_date);
+    const timeStr  = `${fmtTime(slot.start_time)}-${fmtTime(slot.end_time)}`;
+    // Excel sheet names max 31 chars; keep slot_id for upload parser
+    let sheetName  = `${dayStr}${dateStr} ${timeStr} (slot_${slot.id})`;
+    if (sheetName.length > 31) sheetName = `${dateStr} ${timeStr} (slot_${slot.id})`;
+    const ws = workbook.addWorksheet(sheetName);
 
     // All enabled rooms for this slot, sorted by location_order.
     // We show ALL rooms whether or not the algorithm assigned students to them.

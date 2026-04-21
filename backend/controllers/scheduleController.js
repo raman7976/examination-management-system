@@ -28,12 +28,12 @@ export const getSlots = async (req, res) => {
 export const getUnscheduledCourses = async (req, res) => {
     try {
         const [rows] = await db.execute(
-            `SELECT c.course_code, c.course_name, c.total_students,
+            `SELECT c.course_code, c.course_name, c.total_students, c.short_name,
                     GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructors
              FROM courses c
              LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
              WHERE c.course_code NOT IN (SELECT course_code FROM scheduled_exams)
-             GROUP BY c.course_code
+             GROUP BY c.course_code, c.course_name, c.total_students, c.short_name
              ORDER BY c.course_code`
         );
 
@@ -96,5 +96,53 @@ export const assignCourses = async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to assign courses to slot.', error: dbErr.message });
     } finally {
         conn.release();
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GET /api/schedule/scheduled-courses
+//  Fetch all courses that ARE in scheduled_exams, grouped by slot
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const getScheduledCourses = async (req, res) => {
+    try {
+        const [rows] = await db.execute(
+            `SELECT se.id, se.slot_id, se.course_code,
+                    c.course_name, c.total_students, c.short_name,
+                    GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructors,
+                    es.exam_date, es.exam_day, es.start_time, es.end_time
+             FROM scheduled_exams se
+             JOIN courses c ON se.course_code = c.course_code
+             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+             JOIN exam_slots es ON se.slot_id = es.id
+             GROUP BY se.id, se.slot_id, se.course_code, c.course_name, c.total_students, c.short_name,
+                      es.exam_date, es.exam_day, es.start_time, es.end_time
+             ORDER BY es.exam_date, es.start_time, c.course_code`
+        );
+
+        res.status(200).json({ success: true, scheduled: rows });
+    } catch (error) {
+        console.error('getScheduledCourses error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch scheduled courses.', error: error.message });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  DELETE /api/schedule/unassign/:id
+//  Remove a single scheduled_exam entry by its primary key
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const unassignCourse = async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Also clean up any seating allocations that reference this scheduled exam
+        await db.execute('DELETE FROM seating_allocations WHERE scheduled_exam_id = ?', [id]);
+        const [result] = await db.execute('DELETE FROM scheduled_exams WHERE id = ?', [id]);
+        if (result.affectedRows === 0)
+            return res.status(404).json({ success: false, message: 'Scheduled exam not found.' });
+        res.status(200).json({ success: true, message: 'Course unassigned successfully.' });
+    } catch (error) {
+        console.error('unassignCourse error:', error);
+        res.status(500).json({ success: false, message: 'Failed to unassign course.', error: error.message });
     }
 };

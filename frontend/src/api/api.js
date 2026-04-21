@@ -67,7 +67,9 @@ export const getEnrollmentList = (search = '') => API.get(`/upload/enrollments?s
 // Schedule Routes
 export const getExamSlots = () => API.get('/schedule/slots');
 export const getUnscheduledCourses = () => API.get('/schedule/unscheduled-courses');
+export const getScheduledCourses = () => API.get('/schedule/scheduled-courses');
 export const assignCoursesToSlot = (data) => API.post('/schedule/assign', data);
+export const unassignCourse = (id) => API.delete(`/schedule/unassign/${id}`);
 
 // Seating Routes
 export const generateMicroPlan = (data) => API.post('/seating/generate-plan', data);

@@ -69,6 +69,7 @@ export const uploadCourses = async (req, res) => {
 
         const colCode       = headers['coursecode'];
         const colName       = headers['coursename'];
+        const colShortName  = headers['shortname'];
         const colInstructor = headers['instructor'];
         const colStudents   = headers['totalstudent'] || headers['totalstudents'];
 
@@ -97,8 +98,10 @@ export const uploadCourses = async (req, res) => {
 
     const rawStudents = colStudents ? getCellValue(row.getCell(colStudents)).trim() : '0';
     const totalStudents = parseInt(rawStudents, 10) || 0;
+    
+    const shortName = colShortName ? getCellValue(row.getCell(colShortName)).trim() : null;
 
-    courses.push({ courseCode, courseName, instructors, totalStudents });
+    courses.push({ courseCode, courseName, shortName, instructors, totalStudents });
         });
 
         if (courses.length === 0)
@@ -112,15 +115,16 @@ export const uploadCourses = async (req, res) => {
             let upserted = 0;
             let instructorsInserted = 0;
 
-            for (const { courseCode, courseName, instructors, totalStudents } of courses) {
+            for (const { courseCode, courseName, shortName, instructors, totalStudents } of courses) {
                 // Upsert into courses table (no instructor_name column)
                 await conn.execute(
-                    `INSERT INTO courses (course_code, course_name, total_students)
-                     VALUES (?, ?, ?)
+                    `INSERT INTO courses (course_code, course_name, total_students, short_name)
+                     VALUES (?, ?, ?, ?)
                      ON DUPLICATE KEY UPDATE
                          course_name    = VALUES(course_name),
-                         total_students = VALUES(total_students)`,
-                    [courseCode, courseName, totalStudents]
+                         total_students = VALUES(total_students),
+                         short_name     = VALUES(short_name)`,
+                    [courseCode, courseName, totalStudents, shortName]
                 );
                 upserted++;
 
@@ -505,7 +509,7 @@ export const getCourseList = async (req, res) => {
     try {
         const search = req.query.search || '';
         let query = `
-            SELECT c.course_code, c.course_name, c.total_students,
+            SELECT c.course_code, c.course_name, c.total_students, c.short_name,
                    GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructors
             FROM courses c
             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
@@ -513,11 +517,11 @@ export const getCourseList = async (req, res) => {
         const params = [];
 
         if (search) {
-            query += ` WHERE c.course_code LIKE ? OR c.course_name LIKE ?`;
-            params.push(`%${search}%`, `%${search}%`);
+            query += ` WHERE c.course_code LIKE ? OR c.course_name LIKE ? OR c.short_name LIKE ?`;
+            params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
 
-        query += ` GROUP BY c.course_code, c.course_name, c.total_students ORDER BY c.course_code ASC LIMIT 200`;
+        query += ` GROUP BY c.course_code, c.course_name, c.total_students, c.short_name ORDER BY c.course_code ASC LIMIT 200`;
 
         const [rows] = await db.query(query, params);
         const [countRows] = await db.query('SELECT COUNT(*) as total FROM courses');

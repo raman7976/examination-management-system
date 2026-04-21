@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { getExamSlots, getUnscheduledCourses, assignCoursesToSlot } from '../api/api.js';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getExamSlots, getUnscheduledCourses, getScheduledCourses, assignCoursesToSlot, unassignCourse } from '../api/api.js';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -40,6 +40,10 @@ function SmartScheduling() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
+  const [activeTab, setActiveTab] = useState('assign');
+  const [scheduledCourses, setScheduledCourses] = useState([]);
+  const [scheduledLoading, setScheduledLoading] = useState(false);
+  const [expandedSlots, setExpandedSlots] = useState({});
 
   // ── Initial Data Fetch ──
   useEffect(() => {
@@ -62,6 +66,43 @@ function SmartScheduling() {
     fetchData();
   }, []);
 
+  // ── Fetch scheduled courses ──
+  const fetchScheduled = useCallback(async () => {
+    setScheduledLoading(true);
+    try {
+      const res = await getScheduledCourses();
+      setScheduledCourses(res.data.scheduled || []);
+    } catch (err) { console.error('Fetch scheduled error:', err); }
+    finally { setScheduledLoading(false); }
+  }, []);
+
+  useEffect(() => { if (activeTab === 'scheduled') fetchScheduled(); }, [activeTab, fetchScheduled]);
+
+  // ── Group scheduled courses by slot ──
+  const scheduledBySlot = useMemo(() => {
+    const grouped = {};
+    for (const c of scheduledCourses) {
+      if (!grouped[c.slot_id]) grouped[c.slot_id] = { slot_id: c.slot_id, exam_date: c.exam_date, exam_day: c.exam_day, start_time: c.start_time, end_time: c.end_time, courses: [] };
+      grouped[c.slot_id].courses.push(c);
+    }
+    return Object.values(grouped);
+  }, [scheduledCourses]);
+
+  // ── Handle unassign ──
+  const handleUnassign = async (entry) => {
+    if (!window.confirm(`Remove ${entry.course_code} – ${entry.course_name} from this slot?`)) return;
+    try {
+      await unassignCourse(entry.id);
+      toast.success(`${entry.course_code} unassigned.`, { autoClose: 2000 });
+      fetchScheduled();
+      // Also refresh unscheduled list so the course reappears
+      const refreshed = await getUnscheduledCourses();
+      setCourses(refreshed.data.courses || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to unassign.', { autoClose: 3000 });
+    }
+  };
+
   // ── Group slots by exam_date ──
   const slotsByDate = useMemo(() => {
     const grouped = {};
@@ -76,13 +117,20 @@ function SmartScheduling() {
   // ── Filter courses by search query ──
   const filteredCourses = useMemo(() => {
     if (!searchQuery.trim()) return courses;
-    const q = searchQuery.toLowerCase();
-    return courses.filter(
-      (c) =>
-        c.course_code.toLowerCase().includes(q) ||
-        c.course_name.toLowerCase().includes(q) ||
-        (c.instructors && c.instructors.toLowerCase().includes(q))
-    );
+    const q = searchQuery.toLowerCase().trim();
+
+    return courses.filter((c) => {
+      const code = c.course_code.toLowerCase();
+      const name = c.course_name.toLowerCase();
+      const inst = c.instructors ? c.instructors.toLowerCase() : '';
+
+      return (
+        code.includes(q) ||
+        name.includes(q) ||
+        inst.includes(q) ||
+        (c.short_name && c.short_name.toLowerCase().includes(q))
+      );
+    });
   }, [courses, searchQuery]);
 
   // ── Toggle course selection ──
@@ -164,13 +212,22 @@ function SmartScheduling() {
       <ToastContainer position="top-right" theme="colored" />
 
       {/* ── Page Header ── */}
-      <div className="mb-6">
+      <div className="mb-5">
         <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Smart Scheduling</h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Select an exam slot, then assign unscheduled courses to it.
-        </p>
+        <p className="text-sm text-slate-500 mt-1">Manage exam course assignments.</p>
       </div>
 
+      {/* ── Tab Switcher ── */}
+      <div className="flex gap-1 mb-5 bg-slate-100 rounded-lg p-1 w-fit">
+        {[{ key: 'assign', label: 'Assign Courses' }, { key: 'scheduled', label: 'Scheduled Courses' }].map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`px-5 py-2 text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 cursor-pointer ${
+              activeTab === tab.key ? 'bg-[#8B1A1A] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'
+            }`}>{tab.label}</button>
+        ))}
+      </div>
+
+      {activeTab === 'assign' && (<>
       {/* ════════════════════════════════════════════════════════════════════
           SECTION 1 — SLOT CALENDAR GRID
           ════════════════════════════════════════════════════════════════════ */}
@@ -282,7 +339,7 @@ function SmartScheduling() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by code, name, or instructor…"
+                  placeholder="Search by code, name, short name, or instructor…"
                   className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-slate-200 
                     bg-slate-50/50 text-slate-800 placeholder-slate-400
                     focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40
@@ -435,6 +492,98 @@ function SmartScheduling() {
           </>
         )}
       </div>
+      </>)}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SCHEDULED COURSES TAB
+          ════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'scheduled' && (
+        <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
+          <div className="px-5 pt-5 pb-3 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+              <svg className="w-4 h-4 text-[#8B1A1A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Scheduled Courses
+            </h3>
+            <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[#8B1A1A]/8 text-[#8B1A1A]">
+              {scheduledCourses.length} course{scheduledCourses.length !== 1 ? 's' : ''} across {scheduledBySlot.length} slot{scheduledBySlot.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {scheduledLoading ? (
+            <div className="p-12 text-center text-sm text-slate-400">Loading scheduled courses…</div>
+          ) : scheduledBySlot.length === 0 ? (
+            <div className="p-12 text-center text-sm text-slate-400">No courses have been scheduled yet.</div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {scheduledBySlot.map(group => {
+                const isOpen = expandedSlots[group.slot_id] !== false;
+                return (
+                  <div key={group.slot_id}>
+                    <div className="px-5 py-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50/60 transition-colors"
+                      onClick={() => setExpandedSlots(prev => ({ ...prev, [group.slot_id]: !isOpen }))}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${isOpen ? 'bg-[#8B1A1A] text-white border-[#8B1A1A]' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d={isOpen ? 'M19 9l-7 7-7-7' : 'M9 5l7 7-7 7'} />
+                          </svg>
+                        </div>
+                        <div>
+                          <span className="text-sm font-bold text-slate-800">{group.exam_day}, {formatDate(group.exam_date)}</span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-slate-400">{formatTime(group.start_time)} – {formatTime(group.end_time)}</span>
+                            <span className="text-[11px] text-slate-300">·</span>
+                            <span className="text-[11px] text-[#8B1A1A] font-semibold">{group.courses.length} course{group.courses.length !== 1 ? 's' : ''}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded">
+                        {group.courses.reduce((s, c) => s + c.total_students, 0)} students
+                      </span>
+                    </div>
+                    {isOpen && (
+                      <div className="bg-slate-50/40 border-t border-slate-100">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              <th className="px-5 py-2 text-left pl-16">Code</th>
+                              <th className="px-3 py-2 text-left">Course Name</th>
+                              <th className="px-3 py-2 text-left">Short Name</th>
+                              <th className="px-3 py-2 text-left hidden md:table-cell">Instructor(s)</th>
+                              <th className="px-3 py-2 text-right">Students</th>
+                              <th className="px-3 py-2 text-right pr-5">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {group.courses.map(c => (
+                              <tr key={c.id} className="hover:bg-white/80 transition-colors">
+                                <td className="px-5 py-2.5 pl-16 font-mono text-xs font-bold text-[#8B1A1A]">{c.course_code}</td>
+                                <td className="px-3 py-2.5 text-[13px] text-slate-700">{c.course_name}</td>
+                                <td className="px-3 py-2.5 text-xs text-slate-400">{c.short_name || '—'}</td>
+                                <td className="px-3 py-2.5 text-xs text-slate-400 hidden md:table-cell truncate max-w-[180px]">{c.instructors || '—'}</td>
+                                <td className="px-3 py-2.5 text-right">
+                                  <span className="inline-flex items-center justify-center bg-slate-100 text-slate-600 text-[11px] font-semibold rounded-full px-2.5 py-0.5">{c.total_students}</span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right pr-5">
+                                  <button onClick={(e) => { e.stopPropagation(); handleUnassign(c); }}
+                                    className="text-[10px] font-bold uppercase tracking-wider text-red-500 hover:text-white hover:bg-red-500 border border-red-200 hover:border-red-500 px-2.5 py-1 rounded-md transition-all cursor-pointer">
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
