@@ -9,7 +9,7 @@ import SeatingManager from './pages/SeatingManager.jsx';
 import SeatingArrangement from './pages/SeatingArrangement.jsx';
 import CourseSeatingPDF from './pages/CourseSeatingPDF.jsx';
 import PastExams from './pages/PastExams.jsx';
-import ProtectedRoute from './components/ProtectedRoute'; // ✅ Import is perfect
+import ProtectedRoute from './components/ProtectedRoute'; // 
 import './App.css';
 
 function App() {

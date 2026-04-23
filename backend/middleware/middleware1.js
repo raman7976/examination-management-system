@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 
 export const protect = async (req, res, next) => {
     let token;
-console.log("🚨 BOUNCER HIT! Headers received:", req.headers.authorization);
+console.log("HIT! Headers received:", req.headers.authorization);
     // 1. Check if the token exists in the headers
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {

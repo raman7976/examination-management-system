@@ -108,6 +108,8 @@ export const uploadCourses = async (req, res) => {
             return res.status(400).json({ success: false, message: 'No valid course rows found in the file.' });
 
         // 4. Upsert into DB — normalized schema (courses + course_instructors)
+        //    Uses BATCHED bulk queries to minimize DB round-trips
+        const BATCH_SIZE = 500;
         const conn = await db.getConnection();
         try {
             await conn.beginTransaction();
@@ -115,32 +117,56 @@ export const uploadCourses = async (req, res) => {
             let upserted = 0;
             let instructorsInserted = 0;
 
-            for (const { courseCode, courseName, shortName, instructors, totalStudents } of courses) {
-                // Upsert into courses table (no instructor_name column)
-                await conn.execute(
+            // ── Batch upsert courses ───────────────────────────────────────
+            for (let i = 0; i < courses.length; i += BATCH_SIZE) {
+                const batch = courses.slice(i, i + BATCH_SIZE);
+                const placeholders = batch.map(() => '(?, ?, ?, ?)').join(', ');
+                const values = batch.flatMap(c => [c.courseCode, c.courseName, c.totalStudents, c.shortName]);
+
+                await conn.query(
                     `INSERT INTO courses (course_code, course_name, total_students, short_name)
-                     VALUES (?, ?, ?, ?)
+                     VALUES ${placeholders}
                      ON DUPLICATE KEY UPDATE
                          course_name    = VALUES(course_name),
                          total_students = VALUES(total_students),
                          short_name     = VALUES(short_name)`,
-                    [courseCode, courseName, totalStudents, shortName]
+                    values
                 );
-                upserted++;
+                upserted += batch.length;
+            }
 
-                // Delete existing instructors for this course (prevents duplicates on re-upload)
-                await conn.execute(
-                    `DELETE FROM course_instructors WHERE course_code = ?`,
-                    [courseCode]
+            // ── Batch delete existing instructors for all uploaded courses ─
+            for (let i = 0; i < courses.length; i += BATCH_SIZE) {
+                const batch = courses.slice(i, i + BATCH_SIZE);
+                const delPlaceholders = batch.map(() => '?').join(', ');
+                const courseCodes = batch.map(c => c.courseCode);
+
+                await conn.query(
+                    `DELETE FROM course_instructors WHERE course_code IN (${delPlaceholders})`,
+                    courseCodes
                 );
+            }
 
-                // Insert each instructor as a separate row
-                for (const name of instructors) {
-                    await conn.execute(
-                        `INSERT INTO course_instructors (course_code, instructor_name) VALUES (?, ?)`,
-                        [courseCode, name]
+            // ── Batch insert all instructor mappings ──────────────────────
+            const allInstructorPairs = [];
+            for (const c of courses) {
+                for (const name of c.instructors) {
+                    allInstructorPairs.push(c.courseCode, name);
+                }
+            }
+
+            if (allInstructorPairs.length > 0) {
+                const totalPairs = allInstructorPairs.length / 2;
+                for (let i = 0; i < totalPairs; i += BATCH_SIZE) {
+                    const count = Math.min(BATCH_SIZE, totalPairs - i);
+                    const placeholders = Array.from({ length: count }, () => '(?, ?)').join(', ');
+                    const values = allInstructorPairs.slice(i * 2, (i + count) * 2);
+
+                    await conn.query(
+                        `INSERT INTO course_instructors (course_code, instructor_name) VALUES ${placeholders}`,
+                        values
                     );
-                    instructorsInserted++;
+                    instructorsInserted += count;
                 }
             }
 
