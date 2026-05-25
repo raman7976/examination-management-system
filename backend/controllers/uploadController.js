@@ -438,6 +438,21 @@ export const uploadEnrollments = async (req, res) => {
 
             await conn.commit();
 
+            // ── Validate: compare actual enrollment counts vs expected ──────
+            const [mismatches] = await conn.query(`
+                SELECT
+                    c.course_code,
+                    c.course_name,
+                    c.total_students            AS expected,
+                    COUNT(ce.roll_number)       AS actual,
+                    (c.total_students - COUNT(ce.roll_number)) AS gap
+                FROM courses c
+                LEFT JOIN course_enrollments ce ON c.course_code = ce.course_code
+                GROUP BY c.course_code, c.course_name, c.total_students
+                HAVING COUNT(ce.roll_number) != c.total_students
+                ORDER BY gap DESC
+            `);
+
             const dbEnd = Date.now();
             const totalDuplicateEnrollments = enrollments.length - uniqueEnrollments.length;
 
@@ -460,6 +475,13 @@ export const uploadEnrollments = async (req, res) => {
                 },
                 file_details: fileResults,
                 warnings: parseWarnings,
+                mismatches: mismatches.map(m => ({
+                    course_code: m.course_code,
+                    course_name: m.course_name,
+                    expected:    Number(m.expected),
+                    actual:      Number(m.actual),
+                    gap:         Number(m.gap),
+                })),
             });
 
         } catch (dbErr) {

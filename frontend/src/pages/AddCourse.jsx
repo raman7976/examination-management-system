@@ -12,6 +12,7 @@ function AddCourse() {
   const [enrollmentFile, setEnrollmentFile] = useState(null);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [enrollmentMessage, setEnrollmentMessage] = useState({ text: '', type: '' });
+  const [mismatches, setMismatches] = useState([]);
 
   // ── Reset State ──
   const [resetLoading, setResetLoading] = useState(false);
@@ -154,6 +155,7 @@ function AddCourse() {
 
     setEnrollmentLoading(true);
     setEnrollmentMessage({ text: '', type: '' });
+    setMismatches([]);
 
     try {
       const formData = new FormData();
@@ -177,6 +179,7 @@ function AddCourse() {
         }));
       }
 
+      setMismatches(response.data.mismatches || []);
       setEnrollmentFile(null);
       const input = document.getElementById('enrollment-file-input');
       if (input) input.value = '';
@@ -331,6 +334,42 @@ function AddCourse() {
                 </div>
               )}
               <div className="ml-9"><StatusMessage message={enrollmentMessage} /></div>
+
+              {mismatches.length > 0 && (
+                <div className="ml-9 mt-3 rounded-md overflow-hidden" style={{ border: '1px solid #fcd34d' }}>
+                  <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#fffbeb' }}>
+                    <svg className="w-4 h-4 flex-shrink-0" style={{ color: '#d97706' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    <span className="text-xs font-bold" style={{ color: '#92400e' }}>
+                      {mismatches.length} course{mismatches.length !== 1 ? 's' : ''} have fewer enrolled students than expected
+                    </span>
+                  </div>
+                  <table className="w-full text-left">
+                    <thead style={{ background: '#fffbeb', borderTop: '1px solid #fcd34d' }}>
+                      <tr>
+                        {['Course Code', 'Course Name', 'Expected', 'Enrolled', 'Missing'].map(h => (
+                          <th key={h} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: '#b45309' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mismatches.map((m) => (
+                        <tr key={m.course_code} style={{ borderTop: '1px solid #fef3c7', background: 'white' }}>
+                          <td className="px-3 py-1.5 text-xs font-mono font-bold" style={{ color: '#92400e' }}>{m.course_code}</td>
+                          <td className="px-3 py-1.5 text-xs text-slate-600 truncate max-w-[160px]" title={m.course_name}>{m.course_name}</td>
+                          <td className="px-3 py-1.5 text-xs text-slate-500 text-right">{m.expected}</td>
+                          <td className="px-3 py-1.5 text-xs text-slate-500 text-right">{m.actual}</td>
+                          <td className="px-3 py-1.5 text-xs font-bold text-right" style={{ color: '#dc2626' }}>−{m.gap}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="px-3 py-2" style={{ background: '#fffbeb', borderTop: '1px solid #fcd34d' }}>
+                    <p className="text-[10px]" style={{ color: '#b45309' }}>Re-upload the enrollment files for these courses to fix the gaps before proceeding to scheduling.</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
