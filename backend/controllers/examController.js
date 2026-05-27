@@ -268,7 +268,7 @@ export const generateAndExportAllSeating = async (req, res) => {
             FROM   scheduled_exams se
             JOIN   courses c ON se.course_code = c.course_code
             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
-            LEFT JOIN users u ON ci.user_id = u.id
+            LEFT JOIN users u ON ci.employee_id = u.employee_id
             GROUP BY se.id
             ORDER BY c.total_students DESC
         `);
@@ -496,7 +496,7 @@ export const getSeatingPlan = async (req, res) => {
              JOIN   scheduled_exams      se ON sa.scheduled_exam_id = se.id
              JOIN   courses              co ON se.course_code       = co.course_code
              LEFT JOIN course_instructors ci ON co.course_code      = ci.course_code
-             LEFT JOIN users             u  ON ci.user_id           = u.id
+             LEFT JOIN users             u  ON ci.employee_id       = u.employee_id
              JOIN   classrooms           cl ON sa.classroom_id      = cl.id
              JOIN   exam_slots           es ON se.slot_id           = es.id
              WHERE  se.slot_id = ?
@@ -716,7 +716,7 @@ export const previewSlotSeating = async (req, res) => {
              FROM   scheduled_exams se
              JOIN   courses c ON se.course_code = c.course_code
              LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
-             LEFT JOIN users u ON ci.user_id = u.id
+             LEFT JOIN users u ON ci.employee_id = u.employee_id
              WHERE  se.slot_id = ?
              GROUP BY se.id
              ORDER BY c.total_students DESC`,

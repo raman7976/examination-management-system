@@ -518,7 +518,7 @@ export const getCourseList = async (req, res) => {
                    GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructors
             FROM courses c
             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
-            LEFT JOIN users u ON ci.user_id = u.id
+            LEFT JOIN users u ON ci.employee_id = u.employee_id
         `;
         const params = [];
 
@@ -643,10 +643,10 @@ export const uploadCourseInstructors = async (req, res) => {
 
                     const user = userRows[0];
                     const [result] = await conn.query(
-                        `INSERT INTO course_instructors (course_code, user_id, instructor_name)
+                        `INSERT INTO course_instructors (course_code, employee_id, instructor_name)
                          VALUES (?, ?, ?)
-                         ON DUPLICATE KEY UPDATE user_id = user_id`,
-                        [courseCode, user.id, user.full_name]
+                         ON DUPLICATE KEY UPDATE employee_id = employee_id`,
+                        [courseCode, employeeId, user.full_name]
                     );
 
                     if (result.affectedRows === 1) inserted++;
