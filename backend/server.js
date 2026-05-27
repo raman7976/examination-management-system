@@ -8,6 +8,7 @@ import uploadRoutes from './routes/uploadRoutes.js';
 import scheduleRoutes from './routes/scheduleRoutes.js';
 import seatingRoutes from './routes/seatingRoutes.js';
 import registrationRoutes from './routes/registrationRoutes.js';
+import invigilatorSchedulingRoutes from './routes/invigilatorSchedulingRoutes.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -37,6 +38,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/seating', seatingRoutes);
 app.use('/api/registration', registrationRoutes);
+app.use('/api/invigilator-scheduling', invigilatorSchedulingRoutes);
 
 
 

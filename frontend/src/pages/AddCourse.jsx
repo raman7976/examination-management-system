@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import API, { resetSemesterData, getCourseList, getEnrollmentList, uploadCourseInstructors, downloadCourseInstructorTemplate } from '../api/api.js';
+import { usePeriod } from '../context/usePeriod.js';
 
 function AddCourse() {
+  const { activePeriod } = usePeriod();
+  const activeSemester = activePeriod?.semester_label;
   // ── Course Upload State ──
   const [courseFile, setCourseFile] = useState(null);
   const [courseLoading, setCourseLoading] = useState(false);
@@ -84,10 +87,13 @@ function AddCourse() {
     XLSX.writeFile(wb, "Course_Template.xlsx");
   };
 
+  // The Import-Data "Wipe Everything" button means EVERYTHING for the active
+  // semester — including courses, enrollments and instructor mappings — since
+  // those are the only things uploadable from this tab. wipeRoster=true.
   const handleResetSemester = async () => {
     setResetLoading(true);
     try {
-      const response = await resetSemesterData();
+      const response = await resetSemesterData({ wipeRoster: true });
       setCourseMessage({ text: response.data.message || 'Semester data successfully wiped.', type: 'success' });
       setEnrollmentMessage({ text: '', type: '' });
       fetchCourses(); fetchEnrollments();
@@ -274,6 +280,15 @@ function AddCourse() {
 
   return (
     <div>
+      {/* Per-semester scoping banner */}
+      {activeSemester && (
+        <div className="mb-5 px-4 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-[11px] text-amber-800 flex items-center gap-2">
+          <span className="font-bold">⚠ Uploads will be tagged to:</span>
+          <span className="font-bold text-amber-900 px-2 py-0.5 rounded bg-amber-100">{activeSemester}</span>
+          <span className="ml-auto text-amber-700 italic">Courses, enrollments, and instructor mappings are isolated per semester. Change the active semester from <b>Registration</b>.</span>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Import Data</h2>
@@ -500,16 +515,16 @@ function AddCourse() {
             <div className="p-5">
               <h3 className="text-sm font-bold text-red-800 uppercase tracking-wider mb-1">Danger Zone</h3>
               <p className="text-xs text-red-600 mb-3 leading-relaxed max-w-xl">
-                Wiping semester data permanently deletes all courses, students, enrollments, and schedules. <strong>This cannot be undone.</strong>
+                Wipes ALL data for <strong>{activeSemester || 'the active semester'}</strong> only — courses, student enrollments, instructor mappings, exam slots, scheduling and seating. Other semesters are <strong>not</strong> touched. Institutional <code className="px-1 py-0.5 rounded bg-red-100 font-mono text-[10px]">students</code> roster is preserved. <strong>This cannot be undone.</strong>
               </p>
               {!confirmReset ? (
                 <button onClick={() => setConfirmReset(true)}
                   className="px-5 py-2 text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 bg-red-600 hover:bg-red-700 cursor-pointer">
-                  Wipe All Semester Data
+                  Wipe {activeSemester ? `"${activeSemester}"` : 'Active Semester'} Data
                 </button>
               ) : (
                 <div className="flex items-center gap-3 p-3 rounded-md" style={{ background: '#fee2e2', border: '1px solid #fca5a5' }}>
-                  <span className="text-xs font-semibold text-red-800">Are you absolutely sure?</span>
+                  <span className="text-xs font-semibold text-red-800">Are you absolutely sure? This affects {activeSemester || 'the active semester'} only.</span>
                   <button onClick={handleResetSemester} disabled={resetLoading}
                     className={`px-4 py-1.5 text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 ${resetLoading ? 'bg-red-300 cursor-not-allowed' : 'bg-red-700 hover:bg-red-800 cursor-pointer'}`}>
                     {resetLoading ? 'Wiping...' : 'Yes, Wipe Everything'}

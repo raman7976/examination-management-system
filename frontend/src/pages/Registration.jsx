@@ -6,6 +6,7 @@ import {
   deleteInvigilator,
   downloadInvigilatorTemplate,
 } from '../api/api.js';
+import { usePeriod } from '../context/usePeriod.js';
 
 const ROLE_LABELS = {
   faculty:     'Faculty',
@@ -132,6 +133,9 @@ export default function Registration() {
         <h1 className="text-xl font-bold text-slate-800">Invigilator Registration</h1>
         <p className="text-xs text-slate-500 mt-1">Register faculty, PhD students, and lab staff who will serve as invigilators.</p>
       </div>
+
+      {/* ── EXAM PERIODS CARD — the ONE place to manage semesters ───────────── */}
+      <ExamPeriodsCard />
 
       {/* ── SECTION A: Manual Form ──────────────────────────────────────────── */}
       <div className="bg-white rounded-lg p-6" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>
@@ -305,6 +309,137 @@ export default function Registration() {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Exam Periods Card — semester dropdown + midterm/endterm pills + create
+//  This is the ONE place in the whole app where periods can be managed.
+// ═════════════════════════════════════════════════════════════════════════════
+function ExamPeriodsCard() {
+  const {
+    periodsLoaded, periodsError, activePeriod,
+    semesterLabels, activeSemester, periodsInSemester,
+    switchToSemester, switchToExamType, createNewSemester,
+    loadPeriods,
+  } = usePeriod();
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [msg, setMsg] = useState({ text: '', type: '' });
+
+  const handleCreate = async () => {
+    if (!newLabel.trim()) { setMsg({ text: 'Semester label is required.', type: 'error' }); return; }
+    setCreating(true);
+    setMsg({ text: '', type: '' });
+    try {
+      const res = await createNewSemester(newLabel.trim());
+      if (res?.already_existed) {
+        setMsg({ text: `"${newLabel.trim()}" already exists — no changes made.`, type: 'info' });
+      } else {
+        setMsg({ text: `Created "${newLabel.trim()}" — both midterm & endterm ready.`, type: 'success' });
+      }
+      setShowCreate(false);
+      setNewLabel('');
+    } catch (err) {
+      setMsg({ text: err.response?.data?.message || 'Create failed.', type: 'error' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (!periodsLoaded) {
+    return <div className="bg-white rounded-lg p-6 text-xs text-slate-400" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>Loading exam periods…</div>;
+  }
+  if (periodsError) {
+    return (
+      <div className="bg-red-50 rounded-lg p-4 text-xs text-red-700 flex items-center justify-between">
+        <span>⚠ {periodsError}</span>
+        <button onClick={loadPeriods} className="font-bold uppercase tracking-wider px-3 py-1 rounded border border-red-300 hover:bg-red-100 cursor-pointer">Retry</button>
+      </div>
+    );
+  }
+
+  const midterm = periodsInSemester.find(p => p.exam_type === 'midterm');
+  const endterm = periodsInSemester.find(p => p.exam_type === 'endterm');
+
+  return (
+    <div className="bg-white rounded-lg p-6" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: '#8B1A1A' }}>✓</div>
+        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Exam Periods</h2>
+        {activePeriod && (
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
+            Active: {activePeriod.semester_label} · {activePeriod.exam_type}
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-slate-500 mb-4">
+        Switch between semesters/exams or create a new semester here. This is the only tab where the active period can be changed.
+      </p>
+
+      {/* Semester + Exam pickers */}
+      {semesterLabels.length > 0 && (
+        <div className="flex flex-wrap items-center gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Semester</label>
+            <select value={activeSemester} onChange={(e) => switchToSemester(e.target.value)}
+              className="px-3 py-1.5 text-sm rounded-md border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-1 focus:ring-[#8B1A1A]/30">
+              {semesterLabels.map(lab => <option key={lab} value={lab}>{lab}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Exam</label>
+            <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+              {[
+                { key: 'midterm', label: 'Midterm', period: midterm },
+                { key: 'endterm', label: 'Endterm', period: endterm },
+              ].map(et => {
+                const active = activePeriod && activePeriod.exam_type === et.key && activePeriod.semester_label === activeSemester;
+                const exists = !!et.period;
+                return (
+                  <button key={et.key} disabled={!exists}
+                    onClick={() => switchToExamType(et.key)}
+                    title={exists ? '' : 'Not created yet'}
+                    className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-colors ${
+                      active ? 'bg-[#8B1A1A] text-white' :
+                      exists ? 'text-slate-500 hover:text-slate-700 hover:bg-white cursor-pointer' :
+                               'text-slate-300 cursor-not-allowed'
+                    }`}>{et.label}</button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* + New Semester */}
+      <div className="border-t border-slate-100 pt-4">
+        {!showCreate ? (
+          <button onClick={() => setShowCreate(true)}
+            className="text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md border border-[#8B1A1A]/40 text-[#8B1A1A] hover:bg-[#8B1A1A] hover:text-white transition-all cursor-pointer">
+            + New Semester
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setShowCreate(false); setNewLabel(''); } }}
+              placeholder='Semester label, e.g. "Even 2024-25"'
+              className="px-3 py-1.5 text-sm rounded-md border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 w-64" />
+            <button onClick={handleCreate} disabled={creating}
+              className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md text-white ${creating ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] cursor-pointer'}`}>
+              {creating ? 'Creating…' : 'Create Both'}
+            </button>
+            <button onClick={() => { setShowCreate(false); setNewLabel(''); }}
+              className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer">Cancel</button>
+          </div>
+        )}
+        {msg.text && (
+          <p className={`text-xs mt-3 font-medium ${msg.type === 'error' ? 'text-red-600' : msg.type === 'success' ? 'text-emerald-700' : 'text-slate-500'}`}>{msg.text}</p>
         )}
       </div>
     </div>

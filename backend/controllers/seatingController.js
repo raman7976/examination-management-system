@@ -1,4 +1,5 @@
 import db from '../config/mysql.js';
+import { resolveActivePeriod } from '../utils/periodResolver.js';
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  POST /api/seating/generate-plan
@@ -137,11 +138,13 @@ export const getPlanView = async (req, res) => {
                 sa.classroom_id
             FROM individual_seating_plans isp
             JOIN seating_allocations sa ON isp.allocation_id = sa.id
-            JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
-            JOIN courses c ON se.course_code = c.course_code
-            JOIN students st ON isp.roll_number = st.roll_number
-            JOIN classroom_seats cs ON (cs.classroom_id = sa.classroom_id AND cs.lane = sa.lane AND cs.seat_number = isp.seat_number)
-            JOIN classrooms cl ON sa.classroom_id = cl.id
+            JOIN scheduled_exams se     ON sa.scheduled_exam_id = se.id
+            JOIN exam_slots es          ON se.slot_id = es.id
+            JOIN exam_periods ep        ON ep.id = es.exam_period_id
+            JOIN courses c              ON c.course_code = se.course_code AND c.semester_label = ep.semester_label
+            JOIN students st            ON isp.roll_number = st.roll_number
+            JOIN classroom_seats cs     ON (cs.classroom_id = sa.classroom_id AND cs.lane = sa.lane AND cs.seat_number = isp.seat_number)
+            JOIN classrooms cl          ON sa.classroom_id = cl.id
             WHERE se.slot_id = ?
         `;
         const params = [slot_id];
@@ -158,5 +161,48 @@ export const getPlanView = async (req, res) => {
     } catch (error) {
         console.error('getPlanView error:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch the seating plan', error: error.message });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GET /api/seating/status
+//  Returns one row per slot in the ACTIVE period, with a flag indicating
+//  whether the micro-seating algorithm has been run (i.e. there are rows in
+//  individual_seating_plans for that slot). Used to decorate the slot
+//  dropdown in Seating Arrangement with a ✓ badge.
+// ═════════════════════════════════════════════════════════════════════════════
+export const getSeatingStatus = async (req, res) => {
+    try {
+        const periodId = await resolveActivePeriod(null, req.query.period_id);
+        const [rows] = await db.execute(`
+            SELECT
+                es.id          AS slot_id,
+                es.exam_date,
+                es.exam_day,
+                es.start_time,
+                es.end_time,
+                COUNT(isp.id)  AS plan_count
+            FROM       exam_slots                es
+            LEFT JOIN  scheduled_exams           se  ON se.slot_id            = es.id
+            LEFT JOIN  seating_allocations       sa  ON sa.scheduled_exam_id  = se.id
+            LEFT JOIN  individual_seating_plans  isp ON isp.allocation_id     = sa.id
+            WHERE      es.exam_period_id = ?
+            GROUP BY   es.id, es.exam_date, es.exam_day, es.start_time, es.end_time
+            ORDER BY   es.exam_date, es.start_time
+        `, [periodId]);
+
+        res.status(200).json({
+            success: true,
+            exam_period_id: periodId,
+            slots: rows.map(r => ({
+                ...r,
+                plan_count: Number(r.plan_count),
+                has_plan:   Number(r.plan_count) > 0,
+            })),
+        });
+    } catch (error) {
+        const status = error.http || 500;
+        console.error('getSeatingStatus error:', error);
+        res.status(status).json({ success: false, message: error.message || 'Failed to fetch seating status.' });
     }
 };

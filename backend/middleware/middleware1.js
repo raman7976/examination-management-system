@@ -17,7 +17,7 @@ console.log("HIT! Headers received:", req.headers.authorization);
             req.user = decoded;
 
             // Move to the next function (the actual route controller)
-            next();
+            return next();
         } catch (error) {
             console.error(error);
             return res.status(401).json({ success: false, message: 'Not authorized, token failed or expired' });

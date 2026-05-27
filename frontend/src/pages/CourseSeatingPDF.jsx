@@ -2,7 +2,39 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getExamSlots, getPlanView, saveExamSession } from '../api/api.js';
+import { usePeriod } from '../context/usePeriod.js';
 import logo from '../assets/lnmiitLogo.jpg';
+
+// Derive a default academic year from today's date (e.g. "2024-25" for May 2025).
+function defaultAcademicYear() {
+    const now = new Date();
+    const yy = now.getFullYear();
+    // July onward = new academic year starting
+    const startYear = now.getMonth() >= 6 ? yy : yy - 1;
+    const endYear = (startYear + 1).toString().slice(-2);
+    return `${startYear}-${endYear}`;
+}
+
+// Parse "Even 2024-25" → "2024-25" (returns label itself if no year-shaped substring found)
+function extractYearFromLabel(label) {
+    if (!label) return null;
+    const m = /(\d{4}-\d{2})/.exec(label);
+    return m ? m[1] : null;
+}
+
+// Parse "Even 2024-25" → "Even" (or "Odd"); returns null if neither token present
+function extractSemesterFromLabel(label) {
+    if (!label) return null;
+    const lower = label.toLowerCase();
+    if (lower.includes('odd')) return 'Odd';
+    if (lower.includes('even')) return 'Even';
+    return null;
+}
+
+const EXAM_TYPE_TO_PDF_LABEL = {
+    midterm: 'Mid Term Examination',
+    endterm: 'End Term Examination',
+};
 
 // ── Helpers ──
 function formatTime12(t) {
@@ -33,6 +65,7 @@ function formatDateDisplay(dateStr) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function CourseSeatingPDF() {
+    const { activePeriod, periodVersion } = usePeriod();
     const [slots, setSlots] = useState([]);
     const [selectedDay, setSelectedDay] = useState(null);
     const [selectedSlotId, setSelectedSlotId] = useState(null);
@@ -44,7 +77,8 @@ export default function CourseSeatingPDF() {
     const [expandedHalls, setExpandedHalls] = useState({});
     const [examType, setExamType] = useState('Mid Term Examination');
     const [semesterType, setSemesterType] = useState('Even');
-    const [academicYear, setAcademicYear] = useState('2025-26');
+    const [academicYear, setAcademicYear] = useState(defaultAcademicYear());
+
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState({ type: '', text: '' });
     const logoBase64Ref = useRef(null);
@@ -62,16 +96,47 @@ export default function CourseSeatingPDF() {
         })();
     }, []);
 
-    // ── Fetch slots on mount ──
+    // ── When the global active period changes, refetch its slots and auto-fill
+    //    examType / semesterType / academicYear. Past data lives in the
+    //    Past Exams tab — this page only shows the current active period. ──
     useEffect(() => {
+        if (!activePeriod) { setLoading(false); return; }
+        if (EXAM_TYPE_TO_PDF_LABEL[activePeriod.exam_type]) {
+            setExamType(EXAM_TYPE_TO_PDF_LABEL[activePeriod.exam_type]);
+        }
+        const sem = extractSemesterFromLabel(activePeriod.semester_label);
+        if (sem) setSemesterType(sem);
+        const year = extractYearFromLabel(activePeriod.semester_label);
+        if (year) setAcademicYear(year);
+
         (async () => {
+            setLoading(true);
             try {
                 const res = await getExamSlots();
                 setSlots(res.data?.slots || []);
+                setSelectedSlotId(null);
+                setSelectedDay(null);
+                setSeatingData([]);
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         })();
-    }, []);
+    }, [activePeriod, periodVersion]);
+
+    // Academic-year suggestion list: the active semester's year + a rolling
+    // ±3-year window around the current academic year.
+    const academicYearSuggestions = useMemo(() => {
+        const set = new Set();
+        const activeYear = activePeriod ? extractYearFromLabel(activePeriod.semester_label) : null;
+        if (activeYear) set.add(activeYear);
+        const cur = defaultAcademicYear();
+        const startYear = parseInt(cur.slice(0, 4), 10);
+        for (let i = -3; i <= 3; i++) {
+            const s = startYear + i;
+            const e = ((s + 1) % 100).toString().padStart(2, '0');
+            set.add(`${s}-${e}`);
+        }
+        return Array.from(set).sort();
+    }, [activePeriod]);
 
     // ── Group slots by date ──
     const slotsByDate = useMemo(() => {
@@ -176,7 +241,7 @@ export default function CourseSeatingPDF() {
 
         // ── Logo + Institute Header ──
         if (logoBase64Ref.current) {
-            try { doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14); } catch (e) { /* skip */ }
+            try { doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14); } catch { /* skip */ }
         }
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
@@ -272,7 +337,7 @@ export default function CourseSeatingPDF() {
         const cw = pw - 2 * mx;
 
         if (logoBase64Ref.current) {
-            try { doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14); } catch (e) { /* skip */ }
+            try { doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14); } catch { /* skip */ }
         }
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
@@ -364,7 +429,7 @@ export default function CourseSeatingPDF() {
         const cw = pw - 2 * mx;
 
         if (logoBase64Ref.current) {
-            try { doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14); } catch (e) { /* skip */ }
+            try { doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14); } catch { /* skip */ }
         }
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
@@ -504,9 +569,10 @@ export default function CourseSeatingPDF() {
                 </div>
             )}
 
-            {/* Exam Config: Type + Semester + Year */}
+            {/* Exam Config: Local Period (data filter) + Type + Semester + Year */}
             <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5 mb-5">
                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">Exam Configuration</h3>
+
                 <div className="grid grid-cols-3 gap-4">
                     <div>
                         <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Exam Type</label>
@@ -526,14 +592,20 @@ export default function CourseSeatingPDF() {
                         </select>
                     </div>
                     <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Academic Year</label>
-                        <select value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}
-                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40 cursor-pointer">
-                            <option value="2024-25">2024-25</option>
-                            <option value="2025-26">2025-26</option>
-                            <option value="2026-27">2026-27</option>
-                            <option value="2027-28">2027-28</option>
-                        </select>
+                        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Academic Year <span className="text-slate-400 normal-case font-normal">(type any value)</span>
+                        </label>
+                        <input
+                            type="text"
+                            list="academic-year-suggestions"
+                            value={academicYear}
+                            onChange={(e) => setAcademicYear(e.target.value)}
+                            placeholder="e.g. 2024-25"
+                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40"
+                        />
+                        <datalist id="academic-year-suggestions">
+                            {academicYearSuggestions.map(y => <option key={y} value={y} />)}
+                        </datalist>
                     </div>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-3">PDF Title: <span className="font-semibold text-slate-600">{pdfTitle}</span></p>

@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import db from '../config/mysql.js';
 import { runSeatingAlgorithm } from '../utils/seatingAlgorithm.js';
+import { resolveActivePeriod } from '../utils/periodResolver.js';
 
 // ── Colour constants (ARGB) ────────────────────────────────────────────────────
 const COLORS = {
@@ -28,15 +29,17 @@ export const addBatchExamSlots = async (req, res) => {
     if (!slots || !Array.isArray(slots) || slots.length === 0)
         return res.status(400).json({ message: 'No slots provided for generation.' });
     try {
-        const values = slots.map(s => [s.date, s.day, s.startTime, s.endTime]);
+        const periodId = await resolveActivePeriod(null, req.body.period_id);
+        const values = slots.map(s => [s.date, s.day, s.startTime, s.endTime, periodId]);
         const [result] = await db.query(
-            'INSERT INTO exam_slots (exam_date, exam_day, start_time, end_time) VALUES ?',
+            'INSERT INTO exam_slots (exam_date, exam_day, start_time, end_time, exam_period_id) VALUES ?',
             [values]
         );
         res.status(201).json({ message: `Successfully generated ${result.affectedRows} exam slots!` });
     } catch (error) {
+        const status = error.http || 500;
         console.error('Batch insert error:', error);
-        res.status(500).json({ message: 'Server Error', error: error.message });
+        res.status(status).json({ message: error.message || 'Server Error' });
     }
 };
 
@@ -46,48 +49,67 @@ export const updateExamSlot = async (req, res) => {
     if (!exam_date || !exam_day || !start_time || !end_time)
         return res.status(400).json({ message: 'All fields are required (exam_date, exam_day, start_time, end_time).' });
     try {
+        const periodId = await resolveActivePeriod(null, req.body.period_id);
         const [result] = await db.execute(
-            'UPDATE exam_slots SET exam_date = ?, exam_day = ?, start_time = ?, end_time = ? WHERE id = ?',
-            [exam_date, exam_day, start_time, end_time, id]
+            'UPDATE exam_slots SET exam_date = ?, exam_day = ?, start_time = ?, end_time = ? WHERE id = ? AND exam_period_id = ?',
+            [exam_date, exam_day, start_time, end_time, id, periodId]
         );
         if (result.affectedRows === 0)
-            return res.status(404).json({ message: 'Slot not found.' });
+            return res.status(404).json({ message: 'Slot not found in active period.' });
         res.json({ message: 'Slot updated successfully.' });
     } catch (error) {
+        const status = error.http || 500;
         console.error('Update slot error:', error);
-        res.status(500).json({ message: 'Server Error', error: error.message });
+        res.status(status).json({ message: error.message || 'Server Error' });
     }
 };
 
 export const deleteExamSlot = async (req, res) => {
     const { id } = req.params;
     try {
-        const [result] = await db.execute('DELETE FROM exam_slots WHERE id = ?', [id]);
+        const periodId = await resolveActivePeriod(null, req.query.period_id);
+        const [result] = await db.execute(
+            'DELETE FROM exam_slots WHERE id = ? AND exam_period_id = ?',
+            [id, periodId]
+        );
         if (result.affectedRows === 0)
-            return res.status(404).json({ message: 'Slot not found.' });
+            return res.status(404).json({ message: 'Slot not found in active period.' });
         res.json({ message: 'Slot deleted successfully.' });
     } catch (error) {
+        const status = error.http || 500;
         console.error('Delete slot error:', error);
-        res.status(500).json({ message: 'Server Error', error: error.message });
+        res.status(status).json({ message: error.message || 'Server Error' });
     }
 };
 
+// Wipes ALL exam_slots for the active period only.
 export const deleteAllExamSlots = async (req, res) => {
     try {
-        const [result] = await db.execute('DELETE FROM exam_slots');
-        res.json({ message: `All exam slots deleted (${result.affectedRows} removed).` });
+        const periodId = await resolveActivePeriod(null, req.query.period_id);
+        const [result] = await db.execute(
+            'DELETE FROM exam_slots WHERE exam_period_id = ?',
+            [periodId]
+        );
+        res.json({ message: `All exam slots deleted for active period (${result.affectedRows} removed).` });
     } catch (error) {
+        const status = error.http || 500;
         console.error('Delete all slots error:', error);
-        res.status(500).json({ message: 'Server Error', error: error.message });
+        res.status(status).json({ message: error.message || 'Server Error' });
     }
 };
 
 export const getAvailableSlots = async (req, res) => {
     try {
-        const [rows] = await db.execute('SELECT * FROM exam_slots ORDER BY exam_date, start_time');
+        const periodId = await resolveActivePeriod(null, req.query.period_id);
+        const [rows] = await db.execute(
+            'SELECT * FROM exam_slots WHERE exam_period_id = ? ORDER BY exam_date, start_time',
+            [periodId]
+        );
         res.status(200).json(rows);
     } catch (error) {
-        res.status(500).json({ message: 'Server Error', error });
+        const status = error.http || 500;
+        console.error('getAvailableSlots error:', error);
+        res.status(status).json({ message: error.message || 'Server Error' });
     }
 };
 
@@ -98,15 +120,36 @@ export const scheduleBatchExams = async (req, res) => {
 
     const conn = await db.getConnection();
     try {
+        const periodId = await resolveActivePeriod(conn, req.body.period_id);
         await conn.beginTransaction();
 
-        // ── HARD RESET: Wipe all previous course & seating data ──
-        // Order matters: seating_allocations has FK → scheduled_exams
-        const [deletedAllocations] = await conn.query('DELETE FROM seating_allocations');
-        const [deletedCourses]     = await conn.query('DELETE FROM scheduled_exams');
+        // ── HARD RESET (active period only) ──
+        // Cascade order: seating_allocations → scheduled_exams (both scoped via slot→period).
+        const [deletedAllocations] = await conn.query(
+            `DELETE sa FROM seating_allocations sa
+             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+             JOIN exam_slots es ON se.slot_id = es.id
+             WHERE es.exam_period_id = ?`,
+            [periodId]
+        );
+        const [deletedCourses] = await conn.query(
+            `DELETE se FROM scheduled_exams se
+             JOIN exam_slots es ON se.slot_id = es.id
+             WHERE es.exam_period_id = ?`,
+            [periodId]
+        );
 
-        // ── Insert the fresh course data ──
-        // New schema: scheduled_exams only stores (slot_id, course_code)
+        // Validate every slot belongs to active period
+        const slotIds = [...new Set(courses.map(c => c.slotId))];
+        const [validSlots] = await conn.query(
+            `SELECT id FROM exam_slots WHERE id IN (${slotIds.map(() => '?').join(',')}) AND exam_period_id = ?`,
+            [...slotIds, periodId]
+        );
+        if (validSlots.length !== slotIds.length) {
+            await conn.rollback();
+            return res.status(400).json({ message: 'One or more slot IDs do not belong to the active exam period.' });
+        }
+
         const values = courses.map(c => [c.slotId, c.courseCode]);
         const [result] = await conn.query(
             'INSERT INTO scheduled_exams (slot_id, course_code) VALUES ?',
@@ -124,9 +167,10 @@ export const scheduleBatchExams = async (req, res) => {
             new_courses: result.affectedRows,
         });
     } catch (error) {
-        await conn.rollback();
+        await conn.rollback().catch(() => {});
+        const status = error.http || 500;
         console.error('Batch schedule error:', error);
-        res.status(500).json({ message: 'Server Error', error: error.message });
+        res.status(status).json({ message: error.message || 'Server Error' });
     } finally {
         conn.release();
     }
@@ -172,8 +216,7 @@ export const addClassroom = async (req, res) => {
  */
 export const getSeatingStatus = async (req, res) => {
     try {
-        // Auto-create seating_allocations if migration hasn't been run yet on the cloud DB
-        
+        const periodId = await resolveActivePeriod(null, req.query.period_id);
         const [rows] = await db.execute(`
             SELECT
                 es.id                               AS slot_id,
@@ -186,9 +229,10 @@ export const getSeatingStatus = async (req, res) => {
             FROM       exam_slots          es
             LEFT JOIN  scheduled_exams     se  ON se.slot_id            = es.id
             LEFT JOIN  seating_allocations sa  ON sa.scheduled_exam_id  = se.id
+            WHERE      es.exam_period_id = ?
             GROUP BY   es.id
             ORDER BY   es.exam_date, es.start_time
-        `);
+        `, [periodId]);
 
         res.status(200).json(
             rows.map(r => ({
@@ -199,8 +243,9 @@ export const getSeatingStatus = async (req, res) => {
             }))
         );
     } catch (error) {
+        const status = error.http || 500;
         console.error('getSeatingStatus error:', error.message);
-        res.status(500).json({ message: 'Server Error', error: error.message });
+        res.status(status).json({ message: error.message || 'Server Error' });
     }
 };
 
@@ -248,13 +293,15 @@ export const generateAndExportAllSeating = async (req, res) => {
             ? defaultRoomIds
             : allRooms.map(r => r.id);
 
-        // 2. Load all slots that have at least one scheduled exam
+        // 2. Load all slots that have at least one scheduled exam (active period)
+        const periodId = await resolveActivePeriod(null, req.body?.period_id);
         const [slots] = await db.execute(`
             SELECT es.*
             FROM   exam_slots es
-            WHERE  EXISTS (SELECT 1 FROM scheduled_exams se WHERE se.slot_id = es.id)
+            WHERE  es.exam_period_id = ?
+              AND  EXISTS (SELECT 1 FROM scheduled_exams se WHERE se.slot_id = es.id)
             ORDER  BY es.exam_date, es.start_time
-        `);
+        `, [periodId]);
 
         if (!slots.length)
             return res.status(404).json({ message: 'No slots with scheduled exams found.' });
@@ -266,8 +313,11 @@ export const generateAndExportAllSeating = async (req, res) => {
                    c.course_name, c.total_students AS student_count,
                    GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructor_name
             FROM   scheduled_exams se
-            JOIN   courses c ON se.course_code = c.course_code
-            LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+            JOIN   exam_slots es      ON se.slot_id = es.id
+            JOIN   exam_periods ep    ON ep.id = es.exam_period_id
+            JOIN   courses c          ON c.course_code = se.course_code AND c.semester_label = ep.semester_label
+            LEFT JOIN course_instructors ci
+                ON c.course_code = ci.course_code AND ci.semester_label = c.semester_label
             LEFT JOIN users u ON ci.employee_id = u.employee_id
             GROUP BY se.id
             ORDER BY c.total_students DESC
@@ -429,9 +479,15 @@ export const uploadAndSaveSeating = async (req, res) => {
         try {
             await conn.beginTransaction();
 
-            // ── HARD RESET: Delete ALL previous seating allocations ──
-            // Not just affected exams — wipe everything so no stale data remains
-            const [deletedAllocations] = await conn.query('DELETE FROM seating_allocations');
+            // ── HARD RESET (active period only) ──
+            const periodId = await resolveActivePeriod(conn, req.body?.period_id);
+            const [deletedAllocations] = await conn.query(
+                `DELETE sa FROM seating_allocations sa
+                 JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+                 JOIN exam_slots es ON se.slot_id = es.id
+                 WHERE es.exam_period_id = ?`,
+                [periodId]
+            );
 
             // Bulk insert new allocations
             if (parsedAllocations.length > 0) {
@@ -494,11 +550,12 @@ export const getSeatingPlan = async (req, res) => {
                  es.end_time
              FROM   seating_allocations  sa
              JOIN   scheduled_exams      se ON sa.scheduled_exam_id = se.id
-             JOIN   courses              co ON se.course_code       = co.course_code
-             LEFT JOIN course_instructors ci ON co.course_code      = ci.course_code
+             JOIN   exam_slots           es ON se.slot_id           = es.id
+             JOIN   exam_periods         ep ON ep.id                = es.exam_period_id
+             JOIN   courses              co ON se.course_code       = co.course_code AND co.semester_label = ep.semester_label
+             LEFT JOIN course_instructors ci ON co.course_code      = ci.course_code AND ci.semester_label = co.semester_label
              LEFT JOIN users             u  ON ci.employee_id       = u.employee_id
              JOIN   classrooms           cl ON sa.classroom_id      = cl.id
-             JOIN   exam_slots           es ON se.slot_id           = es.id
              WHERE  se.slot_id = ?
              GROUP BY sa.id
              ORDER  BY cl.location_order, sa.lane, co.course_name`,
@@ -714,8 +771,11 @@ export const previewSlotSeating = async (req, res) => {
                     c.course_name, c.total_students AS student_count,
                     GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructor_name
              FROM   scheduled_exams se
-             JOIN   courses c ON se.course_code = c.course_code
-             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+             JOIN   exam_slots es      ON se.slot_id = es.id
+             JOIN   exam_periods ep    ON ep.id = es.exam_period_id
+             JOIN   courses c          ON c.course_code = se.course_code AND c.semester_label = ep.semester_label
+             LEFT JOIN course_instructors ci
+                ON c.course_code = ci.course_code AND ci.semester_label = c.semester_label
              LEFT JOIN users u ON ci.employee_id = u.employee_id
              WHERE  se.slot_id = ?
              GROUP BY se.id

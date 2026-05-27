@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import AdmZip from 'adm-zip';
 import XLSX from 'xlsx';
 import db from '../config/mysql.js';
+import { resolveActivePeriod, getActiveSemesterLabel } from '../utils/periodResolver.js';
 
 
 
@@ -106,18 +107,21 @@ export const uploadCourses = async (req, res) => {
         const BATCH_SIZE = 500;
         const conn = await db.getConnection();
         try {
+            const semester = await getActiveSemesterLabel(conn, req.body.period_id);
             await conn.beginTransaction();
 
             let upserted = 0;
 
-            // ── Batch upsert courses ───────────────────────────────────────
+            // ── Batch upsert courses for the active SEMESTER ────────────────
+            // PK is (semester_label, course_code) — re-uploads within the same
+            // semester overwrite; uploads in a different semester create new rows.
             for (let i = 0; i < courses.length; i += BATCH_SIZE) {
                 const batch = courses.slice(i, i + BATCH_SIZE);
-                const placeholders = batch.map(() => '(?, ?, ?, ?)').join(', ');
-                const values = batch.flatMap(c => [c.courseCode, c.courseName, c.totalStudents, c.shortName]);
+                const placeholders = batch.map(() => '(?, ?, ?, ?, ?)').join(', ');
+                const values = batch.flatMap(c => [semester, c.courseCode, c.courseName, c.totalStudents, c.shortName]);
 
                 await conn.query(
-                    `INSERT INTO courses (course_code, course_name, total_students, short_name)
+                    `INSERT INTO courses (semester_label, course_code, course_name, total_students, short_name)
                      VALUES ${placeholders}
                      ON DUPLICATE KEY UPDATE
                          course_name    = VALUES(course_name),
@@ -186,8 +190,12 @@ export const uploadEnrollments = async (req, res) => {
                 message: 'No .xlsx files found in the zip archive (excluding __MACOSX and hidden files).',
             });
 
-        // 1.5. Fetch existing courses for validation before parsing
-        const [existingCoursesRows] = await db.query('SELECT course_code FROM courses');
+        // 1.5. Fetch existing courses FOR THE ACTIVE SEMESTER for validation
+        const semester = await getActiveSemesterLabel(null, req.body.period_id);
+        const [existingCoursesRows] = await db.query(
+            'SELECT course_code FROM courses WHERE semester_label = ?',
+            [semester]
+        );
         const existingCoursesSet = new Set(existingCoursesRows.map(row => row.course_code));
 
         // 2. Parse all xlsx files — collect students and enrollments
@@ -382,11 +390,11 @@ export const uploadEnrollments = async (req, res) => {
 
             for (let i = 0; i < uniqueEnrollments.length; i += BATCH_SIZE) {
                 const batch = uniqueEnrollments.slice(i, i + BATCH_SIZE);
-                const placeholders = batch.map(() => '(?, ?)').join(', ');
-                const values = batch.flatMap(enr => [enr.roll_number, enr.course_code]);
+                const placeholders = batch.map(() => '(?, ?, ?)').join(', ');
+                const values = batch.flatMap(enr => [semester, enr.roll_number, enr.course_code]);
 
                 const [result] = await conn.query(
-                    `INSERT IGNORE INTO course_enrollments (roll_number, course_code)
+                    `INSERT IGNORE INTO course_enrollments (semester_label, roll_number, course_code)
                      VALUES ${placeholders}`,
                     values
                 );
@@ -395,7 +403,7 @@ export const uploadEnrollments = async (req, res) => {
 
             await conn.commit();
 
-            // ── Validate: compare actual enrollment counts vs expected ──────
+            // ── Validate: compare actual enrollment counts vs expected (active semester) ──────
             const [mismatches] = await conn.query(`
                 SELECT
                     c.course_code,
@@ -404,11 +412,13 @@ export const uploadEnrollments = async (req, res) => {
                     COUNT(ce.roll_number)       AS actual,
                     (c.total_students - COUNT(ce.roll_number)) AS gap
                 FROM courses c
-                LEFT JOIN course_enrollments ce ON c.course_code = ce.course_code
+                LEFT JOIN course_enrollments ce
+                    ON c.course_code = ce.course_code AND ce.semester_label = c.semester_label
+                WHERE c.semester_label = ?
                 GROUP BY c.course_code, c.course_name, c.total_students
                 HAVING COUNT(ce.roll_number) != c.total_students
                 ORDER BY gap DESC
-            `);
+            `, [semester]);
 
             const dbEnd = Date.now();
             const totalDuplicateEnrollments = enrollments.length - uniqueEnrollments.length;
@@ -459,49 +469,96 @@ export const uploadEnrollments = async (req, res) => {
 //  Wipes ingested semester data (danger zone)
 // ═════════════════════════════════════════════════════════════════════════════
 
+// DELETE /api/upload/reset
+//   Default: wipes exam_slots/scheduled_exams/seating data for the ACTIVE period
+//   only. Institutional / roster data (courses, students, course_instructors,
+//   course_enrollments) is preserved because it's shared across periods.
+//
+//   Set ?wipe_roster=true to ALSO truncate roster tables (rare "blank-slate"
+//   re-upload scenario). This still spares users/classrooms/exam_periods.
 export const resetSemesterData = async (req, res) => {
-    let conn;
+    const wipeRoster = String(req.query.wipe_roster || '').toLowerCase() === 'true';
+    const conn = await db.getConnection();
     try {
-        conn = await db.getConnection();
-        await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+        const periodId = await resolveActivePeriod(conn, req.query.period_id);
+        console.log(`⚠️ [DANGER] Reset for period ${periodId} (wipe_roster=${wipeRoster})`);
 
-        console.log('⚠️ [DANGER] Wiping Semester Data: Started');
+        const deleted = {};
+        await conn.beginTransaction();
 
-        // Execute in exact order specified
-        const tablesToWipe = [
-            'individual_seating_plans',
-            'seating_allocations',
-            'scheduled_exams',
-            'course_enrollments',
-            'course_instructors',
-            'courses',
-            'students'
-        ];
+        // individual_seating_plans → cascade via seating_allocations FK, but we
+        // delete explicitly for clear telemetry.
+        const [r1] = await conn.query(
+            `DELETE isp FROM individual_seating_plans isp
+             JOIN seating_allocations sa ON isp.allocation_id = sa.id
+             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+             JOIN exam_slots es ON se.slot_id = es.id
+             WHERE es.exam_period_id = ?`,
+            [periodId]
+        );
+        deleted.individual_seating_plans = r1.affectedRows;
 
-        for (const table of tablesToWipe) {
-            try {
-                // Determine whether the table exists by attempting truncation
-                await conn.query(`TRUNCATE TABLE \`${table}\``);
-                console.log(`   ✅ Wiped table: ${table}`);
-            } catch (err) {
-                 // Table might not exist, but let's log the error.
-                 console.log(`   ⚠️ Could not wipe ${table}: ${err.message}`);
-            }
+        const [r2] = await conn.query(
+            `DELETE sa FROM seating_allocations sa
+             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+             JOIN exam_slots es ON se.slot_id = es.id
+             WHERE es.exam_period_id = ?`,
+            [periodId]
+        );
+        deleted.seating_allocations = r2.affectedRows;
+
+        const [r3] = await conn.query(
+            `DELETE se FROM scheduled_exams se
+             JOIN exam_slots es ON se.slot_id = es.id
+             WHERE es.exam_period_id = ?`,
+            [periodId]
+        );
+        deleted.scheduled_exams = r3.affectedRows;
+
+        // invigilator_assignments scoped by exam_period_id directly
+        const [r4] = await conn.query(
+            `DELETE FROM invigilator_assignments WHERE exam_period_id = ?`,
+            [periodId]
+        );
+        deleted.invigilator_assignments = r4.affectedRows;
+
+        // exam_slots for this period
+        const [r5] = await conn.query(
+            `DELETE FROM exam_slots WHERE exam_period_id = ?`,
+            [periodId]
+        );
+        deleted.exam_slots = r5.affectedRows;
+
+        if (wipeRoster) {
+            // Per-semester roster wipe. Course-level tables now carry
+            // semester_label, so we only wipe rows for the active semester.
+            // `students` stays global (institutional roster).
+            const sem = await getActiveSemesterLabel(conn, periodId);
+            const [rCi] = await conn.query('DELETE FROM course_instructors WHERE semester_label = ?', [sem]);
+            const [rCe] = await conn.query('DELETE FROM course_enrollments WHERE semester_label = ?', [sem]);
+            const [rC]  = await conn.query('DELETE FROM courses             WHERE semester_label = ?', [sem]);
+            deleted.course_instructors = rCi.affectedRows;
+            deleted.course_enrollments = rCe.affectedRows;
+            deleted.courses            = rC.affectedRows;
         }
 
-        await conn.query('SET FOREIGN_KEY_CHECKS = 1');
-        console.log('⚠️ [DANGER] Wiping Semester Data: Completed');
-
-        return res.status(200).json({ success: true, message: 'All semester data has been completely wiped.' });
-
+        await conn.commit();
+        return res.status(200).json({
+            success: true,
+            message: wipeRoster
+                ? 'Active period wiped AND roster (courses/students) truncated across all periods.'
+                : 'Active period data wiped. Roster (courses/students) untouched — use ?wipe_roster=true if you need a full reset.',
+            exam_period_id: periodId,
+            deleted,
+        });
     } catch (error) {
-        if (conn) {
-            await conn.query('SET FOREIGN_KEY_CHECKS = 1');
-        }
+        await conn.rollback().catch(() => {});
+        try { await conn.query('SET FOREIGN_KEY_CHECKS = 1'); } catch {}
+        const status = error.http || 500;
         console.error('resetSemesterData error:', error);
-        return res.status(500).json({ success: false, message: 'Server error during semester data reset.', error: error.message });
+        return res.status(status).json({ success: false, message: error.message || 'Server error during semester data reset.' });
     } finally {
-        if (conn) conn.release();
+        conn.release();
     }
 };
 
@@ -512,30 +569,34 @@ export const resetSemesterData = async (req, res) => {
 
 export const getCourseList = async (req, res) => {
     try {
+        const semester = await getActiveSemesterLabel(null, req.query.period_id);
         const search = req.query.search || '';
         let query = `
             SELECT c.course_code, c.course_name, c.total_students, c.short_name,
                    GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructors
             FROM courses c
-            LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+            LEFT JOIN course_instructors ci
+                ON c.course_code = ci.course_code AND ci.semester_label = c.semester_label
             LEFT JOIN users u ON ci.employee_id = u.employee_id
+            WHERE c.semester_label = ?
         `;
-        const params = [];
+        const params = [semester];
 
         if (search) {
-            query += ` WHERE c.course_code LIKE ? OR c.course_name LIKE ? OR c.short_name LIKE ?`;
+            query += ` AND (c.course_code LIKE ? OR c.course_name LIKE ? OR c.short_name LIKE ?)`;
             params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
 
         query += ` GROUP BY c.course_code, c.course_name, c.total_students, c.short_name ORDER BY c.course_code ASC LIMIT 200`;
 
         const [rows] = await db.query(query, params);
-        const [countRows] = await db.query('SELECT COUNT(*) as total FROM courses');
+        const [countRows] = await db.query('SELECT COUNT(*) as total FROM courses WHERE semester_label = ?', [semester]);
 
-        res.json({ success: true, courses: rows, total: countRows[0].total });
+        res.json({ success: true, courses: rows, total: countRows[0].total, semester });
     } catch (error) {
+        const status = error.http || 500;
         console.error('getCourseList error:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch courses.' });
+        res.status(status).json({ success: false, message: error.message || 'Failed to fetch courses.' });
     }
 };
 
@@ -546,14 +607,17 @@ export const getCourseList = async (req, res) => {
 
 export const getEnrollmentList = async (req, res) => {
     try {
+        const semester = await getActiveSemesterLabel(null, req.query.period_id);
         const search = req.query.search || '';
+        // Show only students enrolled in at least one course in the active semester.
         let query = `
             SELECT s.roll_number, s.name, s.email, s.branch,
                    GROUP_CONCAT(ce.course_code SEPARATOR ', ') AS enrolled_courses
             FROM students s
-            LEFT JOIN course_enrollments ce ON s.roll_number = ce.roll_number
+            INNER JOIN course_enrollments ce
+                ON s.roll_number = ce.roll_number AND ce.semester_label = ?
         `;
-        const params = [];
+        const params = [semester];
 
         if (search) {
             query += ` WHERE s.roll_number LIKE ? OR s.name LIKE ? OR s.branch LIKE ?`;
@@ -563,12 +627,16 @@ export const getEnrollmentList = async (req, res) => {
         query += ` GROUP BY s.roll_number, s.name, s.email, s.branch ORDER BY s.roll_number ASC LIMIT 200`;
 
         const [rows] = await db.query(query, params);
-        const [countRows] = await db.query('SELECT COUNT(*) as total FROM students');
+        const [countRows] = await db.query(
+            'SELECT COUNT(DISTINCT roll_number) as total FROM course_enrollments WHERE semester_label = ?',
+            [semester]
+        );
 
-        res.json({ success: true, students: rows, total: countRows[0].total });
+        res.json({ success: true, students: rows, total: countRows[0].total, semester });
     } catch (error) {
+        const status = error.http || 500;
         console.error('getEnrollmentList error:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch enrollments.' });
+        res.status(status).json({ success: false, message: error.message || 'Failed to fetch enrollments.' });
     }
 };
 
@@ -617,48 +685,76 @@ export const uploadCourseInstructors = async (req, res) => {
         const BATCH_SIZE = 500;
         const conn = await db.getConnection();
         try {
-            await conn.beginTransaction();
+            const semester = await getActiveSemesterLabel(conn, req.body.period_id);
 
-            for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-                const batch = rows.slice(i, i + BATCH_SIZE);
+            // ── Bulk preload: courses in this semester + users referenced ──
+            // (Replaces what was previously ONE round-trip per row.)
+            const [courseRows] = await conn.query(
+                'SELECT course_code FROM courses WHERE semester_label = ?',
+                [semester]
+            );
+            const validCourses = new Set(courseRows.map(r => r.course_code));
 
-                for (const { courseCode, employeeId, rowNumber } of batch) {
-                    // Look up course
-                    const [courseRows] = await conn.query(
-                        'SELECT course_code FROM courses WHERE course_code = ?', [courseCode]
-                    );
-                    if (courseRows.length === 0) {
-                        errors.push({ row: rowNumber, course_code: courseCode, employee_id: employeeId, reason: 'Course not found' });
-                        continue;
+            const uniqueEmpIds = Array.from(new Set(rows.map(r => r.employeeId)));
+            let userByEmpId = new Map();
+            if (uniqueEmpIds.length > 0) {
+                const ph = uniqueEmpIds.map(() => '?').join(',');
+                const [userRows] = await conn.query(
+                    `SELECT id, full_name, employee_id FROM users
+                     WHERE employee_id IN (${ph}) AND role != 'admin'`,
+                    uniqueEmpIds
+                );
+                userByEmpId = new Map(userRows.map(u => [u.employee_id, u]));
+            }
+
+            // ── Validate every Excel row in-memory ──
+            const validInserts = []; // [[semester, code, empId, fullName], ...]
+            for (const { courseCode, employeeId, rowNumber } of rows) {
+                if (!validCourses.has(courseCode)) {
+                    errors.push({ row: rowNumber, course_code: courseCode, employee_id: employeeId, reason: `Course not found in semester "${semester}"` });
+                    continue;
+                }
+                const user = userByEmpId.get(employeeId);
+                if (!user) {
+                    errors.push({ row: rowNumber, course_code: courseCode, employee_id: employeeId, reason: 'Invigilator not found (check employee_id)' });
+                    continue;
+                }
+                validInserts.push([semester, courseCode, employeeId, user.full_name]);
+            }
+
+            // ── Bulk INSERT with ON DUPLICATE KEY UPDATE, in batches of 500 ──
+            if (validInserts.length > 0) {
+                await conn.beginTransaction();
+                try {
+                    for (let i = 0; i < validInserts.length; i += BATCH_SIZE) {
+                        const batch = validInserts.slice(i, i + BATCH_SIZE);
+                        const placeholders = batch.map(() => '(?, ?, ?, ?)').join(', ');
+                        const flat = batch.flat();
+                        const [result] = await conn.query(
+                            `INSERT INTO course_instructors (semester_label, course_code, employee_id, instructor_name)
+                             VALUES ${placeholders}
+                             ON DUPLICATE KEY UPDATE instructor_name = VALUES(instructor_name)`,
+                            flat
+                        );
+                        // mysql2 returns 1 per inserted row, 2 per updated, 0 per no-op duplicate.
+                        // For "how many new rows landed" we approximate as the batch size; the
+                        // exact split into inserted vs skipped isn't worth a second query.
+                        // affectedRows on bulk INSERT … ON DUPLICATE KEY UPDATE counts:
+                        //   inserts as 1, updates as 2. We treat ANY row that hit the table as
+                        //   "inserted" for reporting (was previously a per-row counter).
+                        inserted += Math.min(result.affectedRows, batch.length);
+                        skipped  += Math.max(batch.length - result.affectedRows, 0);
                     }
-
-                    // Look up invigilator (non-admin user with this employee_id)
-                    const [userRows] = await conn.query(
-                        "SELECT id, full_name FROM users WHERE employee_id = ? AND role != 'admin'", [employeeId]
-                    );
-                    if (userRows.length === 0) {
-                        errors.push({ row: rowNumber, course_code: courseCode, employee_id: employeeId, reason: 'Invigilator not found (check employee_id)' });
-                        continue;
-                    }
-
-                    const user = userRows[0];
-                    const [result] = await conn.query(
-                        `INSERT INTO course_instructors (course_code, employee_id, instructor_name)
-                         VALUES (?, ?, ?)
-                         ON DUPLICATE KEY UPDATE employee_id = employee_id`,
-                        [courseCode, employeeId, user.full_name]
-                    );
-
-                    if (result.affectedRows === 1) inserted++;
-                    else skipped++;
+                    await conn.commit();
+                } catch (txErr) {
+                    await conn.rollback();
+                    throw txErr;
                 }
             }
 
-            await conn.commit();
             res.status(200).json({ success: true, inserted, skipped, errors });
 
         } catch (dbErr) {
-            await conn.rollback();
             throw dbErr;
         } finally {
             conn.release();

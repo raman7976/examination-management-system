@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { getExamSlots, generateMicroPlan, getPlanView } from '../api/api.js';
+import { getExamSlots, generateMicroPlan, getPlanView, getSeatingArrangementStatus } from '../api/api.js';
 
 export default function SeatingArrangement() {
     const [slots, setSlots] = useState([]);
     const [selectedSlotId, setSelectedSlotId] = useState('');
+    // Map<slot_id (string), { has_plan, plan_count }>
+    const [slotStatus, setSlotStatus] = useState({});
 
     // Data grouped by classroom_id
     const [groupedPlanData, setGroupedPlanData] = useState({});
@@ -16,20 +18,31 @@ export default function SeatingArrangement() {
     // Track which accordions are open by classroom_id
     const [openRooms, setOpenRooms] = useState(new Set());
 
-    // Fetch Slots on mount
-    useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                const slotRes = await getExamSlots();
-                if (slotRes.data?.slots) {
-                    setSlots(slotRes.data.slots);
-                }
-            } catch (err) {
-                console.error("Failed to load selectors:", err);
+    // Fetch Slots + per-slot algorithm-run status on mount
+    const loadInitialData = async () => {
+        try {
+            const [slotRes, statusRes] = await Promise.all([
+                getExamSlots(),
+                getSeatingArrangementStatus(),
+            ]);
+            if (slotRes.data?.slots) setSlots(slotRes.data.slots);
+            const map = {};
+            for (const s of (statusRes.data?.slots || [])) {
+                map[String(s.slot_id)] = { has_plan: s.has_plan, plan_count: s.plan_count };
             }
-        };
-        loadInitialData();
-    }, []);
+            setSlotStatus(map);
+        } catch (err) {
+            console.error("Failed to load selectors:", err);
+        }
+    };
+    useEffect(() => { loadInitialData(); }, []);
+
+    // Summary string for top banner
+    const statusSummary = useMemo(() => {
+        const total = slots.length;
+        const done = slots.filter(s => slotStatus[String(s.id)]?.has_plan).length;
+        return { total, done };
+    }, [slots, slotStatus]);
 
     // Fetch Plan Grid when slot changes
     useEffect(() => {
@@ -100,6 +113,16 @@ export default function SeatingArrangement() {
         try {
             const res = await generateMicroPlan({ slot_id: selectedSlotId });
             setMessage({ type: 'success', text: res.data?.message || 'Generated successfully!' });
+
+            // Refresh the algorithm-run status for the slot dropdown
+            try {
+                const statusRes = await getSeatingArrangementStatus();
+                const map = {};
+                for (const s of (statusRes.data?.slots || [])) {
+                    map[String(s.slot_id)] = { has_plan: s.has_plan, plan_count: s.plan_count };
+                }
+                setSlotStatus(map);
+            } catch { /* non-fatal */ }
 
             // Reload grid for all rooms in this slot
             const gridRes = await getPlanView(selectedSlotId);
@@ -230,24 +253,38 @@ export default function SeatingArrangement() {
             )}
 
             {/* Selector Panel */}
-            <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 mb-8 flex items-end gap-5 font-medium">
-                <div className="w-full relative">
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                        1. Select Exam Slot (Loads all rooms)
-                    </label>
-                    <select
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-[#8B1A1A] focus:ring-1 focus:ring-[#8B1A1A] transition-all appearance-none cursor-pointer"
-                        value={selectedSlotId}
-                        onChange={(e) => setSelectedSlotId(e.target.value)}
-                    >
-                        <option value="">-- Choose Slot --</option>
-                        {slots.map(s => (
-                            <option key={s.id} value={s.id}>
-                                Slot {s.id}: {new Date(s.exam_date).toLocaleDateString()} ({s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)})
-                            </option>
-                        ))}
-                    </select>
+            <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 mb-8">
+                <div className="flex items-end gap-5 font-medium">
+                    <div className="w-full relative">
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                            1. Select Exam Slot (Loads all rooms)
+                        </label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-[#8B1A1A] focus:ring-1 focus:ring-[#8B1A1A] transition-all appearance-none cursor-pointer"
+                            value={selectedSlotId}
+                            onChange={(e) => setSelectedSlotId(e.target.value)}
+                        >
+                            <option value="">-- Choose Slot --</option>
+                            {slots.map(s => {
+                                const done = slotStatus[String(s.id)]?.has_plan;
+                                const marker = done ? '✓ ' : '— ';
+                                return (
+                                    <option key={s.id} value={s.id}>
+                                        {marker}Slot {s.id}: {new Date(s.exam_date).toLocaleDateString()} ({s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)})
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
                 </div>
+                {/* Status summary + legend */}
+                {slots.length > 0 && (
+                    <div className="mt-3 flex items-center gap-4 text-[11px] text-slate-500">
+                        <span><b className="text-emerald-700">{statusSummary.done}</b> of <b>{statusSummary.total}</b> slots have a saved seating plan</span>
+                        <span className="text-slate-300">·</span>
+                        <span><span className="text-emerald-700 font-bold">✓</span> algorithm run · <span className="text-slate-400 font-bold">—</span> pending</span>
+                    </div>
+                )}
             </div>
 
             {/* Data Accordions */}
