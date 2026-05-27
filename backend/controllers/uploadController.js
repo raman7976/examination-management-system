@@ -70,7 +70,6 @@ export const uploadCourses = async (req, res) => {
         const colCode       = headers['coursecode'];
         const colName       = headers['coursename'];
         const colShortName  = headers['shortname'];
-        const colInstructor = headers['instructor'];
         const colStudents   = headers['totalstudent'] || headers['totalstudents'];
 
         if (!colCode || !colName)
@@ -91,17 +90,12 @@ export const uploadCourses = async (req, res) => {
 
     if (!courseCode || !courseName) return; // skip empty rows
 
-    const rawInstructor = colInstructor ? getCellValue(row.getCell(colInstructor)).trim() : '';
-    const instructors = rawInstructor
-        ? rawInstructor.split(',').map(name => name.trim()).filter(Boolean)
-        : [];
-
     const rawStudents = colStudents ? getCellValue(row.getCell(colStudents)).trim() : '0';
     const totalStudents = parseInt(rawStudents, 10) || 0;
-    
+
     const shortName = colShortName ? getCellValue(row.getCell(colShortName)).trim() : null;
 
-    courses.push({ courseCode, courseName, shortName, instructors, totalStudents });
+    courses.push({ courseCode, courseName, shortName, totalStudents });
         });
 
         if (courses.length === 0)
@@ -115,7 +109,6 @@ export const uploadCourses = async (req, res) => {
             await conn.beginTransaction();
 
             let upserted = 0;
-            let instructorsInserted = 0;
 
             // ── Batch upsert courses ───────────────────────────────────────
             for (let i = 0; i < courses.length; i += BATCH_SIZE) {
@@ -135,48 +128,12 @@ export const uploadCourses = async (req, res) => {
                 upserted += batch.length;
             }
 
-            // ── Batch delete existing instructors for all uploaded courses ─
-            for (let i = 0; i < courses.length; i += BATCH_SIZE) {
-                const batch = courses.slice(i, i + BATCH_SIZE);
-                const delPlaceholders = batch.map(() => '?').join(', ');
-                const courseCodes = batch.map(c => c.courseCode);
-
-                await conn.query(
-                    `DELETE FROM course_instructors WHERE course_code IN (${delPlaceholders})`,
-                    courseCodes
-                );
-            }
-
-            // ── Batch insert all instructor mappings ──────────────────────
-            const allInstructorPairs = [];
-            for (const c of courses) {
-                for (const name of c.instructors) {
-                    allInstructorPairs.push(c.courseCode, name);
-                }
-            }
-
-            if (allInstructorPairs.length > 0) {
-                const totalPairs = allInstructorPairs.length / 2;
-                for (let i = 0; i < totalPairs; i += BATCH_SIZE) {
-                    const count = Math.min(BATCH_SIZE, totalPairs - i);
-                    const placeholders = Array.from({ length: count }, () => '(?, ?)').join(', ');
-                    const values = allInstructorPairs.slice(i * 2, (i + count) * 2);
-
-                    await conn.query(
-                        `INSERT INTO course_instructors (course_code, instructor_name) VALUES ${placeholders}`,
-                        values
-                    );
-                    instructorsInserted += count;
-                }
-            }
-
             await conn.commit();
 
             res.status(200).json({
                 success: true,
-                message: `✅ Successfully processed ${upserted} courses and ${instructorsInserted} instructor mappings.`,
+                message: `✅ Successfully processed ${upserted} courses.`,
                 courses_processed: upserted,
-                instructors_inserted: instructorsInserted,
             });
 
         } catch (dbErr) {
@@ -558,9 +515,10 @@ export const getCourseList = async (req, res) => {
         const search = req.query.search || '';
         let query = `
             SELECT c.course_code, c.course_name, c.total_students, c.short_name,
-                   GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructors
+                   GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructors
             FROM courses c
             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+            LEFT JOIN users u ON ci.user_id = u.id
         `;
         const params = [];
 
@@ -611,5 +569,134 @@ export const getEnrollmentList = async (req, res) => {
     } catch (error) {
         console.error('getEnrollmentList error:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch enrollments.' });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  POST /api/upload/course-instructors
+//  Accepts: .xlsx (multipart field "file")
+//  Excel format: course_code | employee_id  (one row per pair)
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const uploadCourseInstructors = async (req, res) => {
+    if (!req.file)
+        return res.status(400).json({ success: false, message: 'No file uploaded. Use field name "file".' });
+
+    try {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(req.file.buffer);
+        const worksheet = workbook.worksheets[0];
+
+        if (!worksheet || worksheet.rowCount < 2)
+            return res.status(400).json({ success: false, message: 'File is empty or has no data rows.' });
+
+        const headers = buildHeaderMap(worksheet);
+        const colCourse = headers['coursecode'];
+        const colEmpId  = headers['employeeid'];
+
+        if (!colCourse || !colEmpId)
+            return res.status(400).json({
+                success: false,
+                message: 'Required columns not found. Expected: "course_code", "employee_id".',
+            });
+
+        const rows = [];
+        worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+            const courseCode = getCellValue(row.getCell(colCourse)).trim();
+            const employeeId = getCellValue(row.getCell(colEmpId)).trim();
+            if (courseCode && employeeId) rows.push({ courseCode, employeeId, rowNumber });
+        });
+
+        if (rows.length === 0)
+            return res.status(400).json({ success: false, message: 'No valid data rows found.' });
+
+        let inserted = 0, skipped = 0;
+        const errors = [];
+
+        const BATCH_SIZE = 500;
+        const conn = await db.getConnection();
+        try {
+            await conn.beginTransaction();
+
+            for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+                const batch = rows.slice(i, i + BATCH_SIZE);
+
+                for (const { courseCode, employeeId, rowNumber } of batch) {
+                    // Look up course
+                    const [courseRows] = await conn.query(
+                        'SELECT course_code FROM courses WHERE course_code = ?', [courseCode]
+                    );
+                    if (courseRows.length === 0) {
+                        errors.push({ row: rowNumber, course_code: courseCode, employee_id: employeeId, reason: 'Course not found' });
+                        continue;
+                    }
+
+                    // Look up invigilator (non-admin user with this employee_id)
+                    const [userRows] = await conn.query(
+                        "SELECT id, full_name FROM users WHERE employee_id = ? AND role != 'admin'", [employeeId]
+                    );
+                    if (userRows.length === 0) {
+                        errors.push({ row: rowNumber, course_code: courseCode, employee_id: employeeId, reason: 'Invigilator not found (check employee_id)' });
+                        continue;
+                    }
+
+                    const user = userRows[0];
+                    const [result] = await conn.query(
+                        `INSERT INTO course_instructors (course_code, user_id, instructor_name)
+                         VALUES (?, ?, ?)
+                         ON DUPLICATE KEY UPDATE user_id = user_id`,
+                        [courseCode, user.id, user.full_name]
+                    );
+
+                    if (result.affectedRows === 1) inserted++;
+                    else skipped++;
+                }
+            }
+
+            await conn.commit();
+            res.status(200).json({ success: true, inserted, skipped, errors });
+
+        } catch (dbErr) {
+            await conn.rollback();
+            throw dbErr;
+        } finally {
+            conn.release();
+        }
+
+    } catch (error) {
+        console.error('uploadCourseInstructors error:', error);
+        res.status(500).json({ success: false, message: 'Server error.', error: error.message });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GET /api/upload/course-instructor-template  (public — no auth)
+//  Streams a .xlsx template for course-instructor mapping
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const downloadCourseInstructorTemplate = async (req, res) => {
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Course Instructor Mapping');
+
+        sheet.columns = [
+            { header: 'course_code', key: 'course_code', width: 20 },
+            { header: 'employee_id', key: 'employee_id', width: 20 },
+        ];
+
+        sheet.getRow(1).font = { bold: true };
+        sheet.addRow({ course_code: 'CSE437', employee_id: 'EMP001' });
+        sheet.addRow({ course_code: '(One row per instructor-course pair)', employee_id: '' });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="course_instructor_template.xlsx"');
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        console.error('downloadCourseInstructorTemplate error:', error);
+        if (!res.headersSent)
+            res.status(500).json({ success: false, message: 'Failed to generate template.' });
     }
 };

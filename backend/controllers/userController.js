@@ -32,14 +32,14 @@ export const login = async (req, res) => {
 
         // 4. GENERATE TOKEN: Standard SDE practice
         const token = jwt.sign(
-        { id: user.id, email: user.email }, 
+        { id: user.id, email: user.email, role: user.role },
            process.env.JWT_SECRET, // <--- Pulling the secret from the .env file
          { expiresIn: '8h' }
          );
-        res.status(200).json({ 
-            message: "Login successful", 
+        res.status(200).json({
+            message: "Login successful",
             token,
-            user: { id: user.id, name: user.full_name, email: user.email } 
+            user: { id: user.id, name: user.full_name, email: user.email, role: user.role }
         });
 
     } catch (err) {

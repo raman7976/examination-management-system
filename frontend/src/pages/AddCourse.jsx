@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
-import API, { resetSemesterData, getCourseList, getEnrollmentList } from '../api/api.js';
+import API, { resetSemesterData, getCourseList, getEnrollmentList, uploadCourseInstructors, downloadCourseInstructorTemplate } from '../api/api.js';
 
 function AddCourse() {
   // ── Course Upload State ──
@@ -13,6 +13,12 @@ function AddCourse() {
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [enrollmentMessage, setEnrollmentMessage] = useState({ text: '', type: '' });
   const [mismatches, setMismatches] = useState([]);
+
+  // ── Course-Instructor Mapping State ──
+  const [mappingFile, setMappingFile]       = useState(null);
+  const [mappingLoading, setMappingLoading] = useState(false);
+  const [mappingMessage, setMappingMessage] = useState({ text: '', type: '' });
+  const [mappingResults, setMappingResults] = useState(null);
 
   // ── Reset State ──
   const [resetLoading, setResetLoading] = useState(false);
@@ -72,7 +78,7 @@ function AddCourse() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([['Course code', 'Course Name', 'Short Name', 'Instructor', 'Total Student']]);
+    const ws = XLSX.utils.aoa_to_sheet([['Course code', 'Course Name', 'Short Name', 'Total Student']]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Course Template");
     XLSX.writeFile(wb, "Course_Template.xlsx");
@@ -195,6 +201,57 @@ function AddCourse() {
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
+  //  COURSE-INSTRUCTOR MAPPING
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const handleMappingFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) setMappingFile(file);
+  };
+
+  const handleDownloadMappingTemplate = async () => {
+    try {
+      const response = await downloadCourseInstructorTemplate();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'course_instructor_template.xlsx';
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      setMappingMessage({ text: 'Failed to download template.', type: 'error' });
+    }
+  };
+
+  const handleMappingUpload = async () => {
+    if (!mappingFile) {
+      setMappingMessage({ text: 'Please select an .xlsx file first.', type: 'error' });
+      return;
+    }
+    setMappingLoading(true);
+    setMappingMessage({ text: '', type: '' });
+    setMappingResults(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', mappingFile);
+      const response = await uploadCourseInstructors(formData);
+      const { inserted, skipped, errors } = response.data;
+      setMappingMessage({
+        text: `Done — ${inserted} linked, ${skipped} skipped, ${errors.length} errors.`,
+        type: errors.length ? 'error' : 'success',
+      });
+      setMappingResults(response.data);
+      setMappingFile(null);
+      const input = document.getElementById('mapping-file-input');
+      if (input) input.value = '';
+    } catch (err) {
+      setMappingMessage({ text: err.response?.data?.message || 'Upload failed.', type: 'error' });
+    } finally {
+      setMappingLoading(false);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
   //  REUSABLE UI COMPONENTS
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -260,7 +317,6 @@ function AddCourse() {
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono ml-1">Course code</code>,
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Course Name</code>,
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Short Name</code>,
-                <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Instructor</code>,
                 <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">Total Student</code>
               </p>
               <p className="text-[10px] text-slate-400 mb-4 ml-9">Existing courses with matching codes will be updated automatically (upsert).</p>
@@ -368,6 +424,72 @@ function AddCourse() {
                   <div className="px-3 py-2" style={{ background: '#fffbeb', borderTop: '1px solid #fcd34d' }}>
                     <p className="text-[10px]" style={{ color: '#b45309' }}>Re-upload the enrollment files for these courses to fix the gaps before proceeding to scheduling.</p>
                   </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* SECTION 3: COURSE-INSTRUCTOR MAPPING */}
+          <div className="bg-white rounded-lg overflow-hidden" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: '#8B1A1A' }}>3</div>
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Link Instructors to Courses</h3>
+              </div>
+
+              <p className="text-xs text-slate-500 mb-1 leading-relaxed ml-9">
+                Upload an <strong>.xlsx</strong> mapping file with columns:
+                <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono ml-1">course_code</code>,
+                <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono">employee_id</code>
+              </p>
+              <p className="text-[10px] text-slate-400 mb-4 ml-9">One row per instructor-course pair. Invigilators must be registered first (Registration tab).</p>
+
+              <div className="ml-9 flex items-center gap-3 flex-wrap">
+                <label className="flex-1 min-w-0">
+                  <input id="mapping-file-input" type="file" accept=".xlsx" onChange={handleMappingFileChange} disabled={mappingLoading}
+                    className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer file:transition-all disabled:opacity-50 disabled:cursor-not-allowed" />
+                </label>
+                <button onClick={handleMappingUpload} disabled={mappingLoading || !mappingFile}
+                  className={`px-4 py-2 text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 flex items-center gap-2 ${mappingLoading || !mappingFile ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] cursor-pointer'}`}>
+                  {mappingLoading ? 'Processing...' : 'Upload'}
+                </button>
+                <button onClick={handleDownloadMappingTemplate}
+                  className="px-3 py-2 text-xs font-semibold rounded-md transition-all border cursor-pointer" style={{ color: '#475569', background: '#f8fafc', borderColor: '#e2e8f0' }}
+                  onMouseEnter={(e) => e.target.style.background = '#f1f5f9'} onMouseLeave={(e) => e.target.style.background = '#f8fafc'}>
+                  Template
+                </button>
+              </div>
+
+              {mappingFile && !mappingLoading && (
+                <div className="ml-9 mt-2 flex items-center gap-2 text-xs text-slate-600">
+                  <span className="font-medium truncate">{mappingFile.name}</span>
+                  <span className="text-slate-400">({(mappingFile.size / 1024).toFixed(1)} KB)</span>
+                </div>
+              )}
+              <div className="ml-9"><StatusMessage message={mappingMessage} /></div>
+
+              {mappingResults && mappingResults.errors.length > 0 && (
+                <div className="ml-9 mt-3 overflow-x-auto">
+                  <table className="text-xs w-full border-collapse">
+                    <thead>
+                      <tr className="text-left text-slate-500 border-b border-slate-100">
+                        <th className="pb-1 pr-4 font-medium">Row</th>
+                        <th className="pb-1 pr-4 font-medium">Course Code</th>
+                        <th className="pb-1 pr-4 font-medium">Employee ID</th>
+                        <th className="pb-1 font-medium">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mappingResults.errors.map((e, i) => (
+                        <tr key={i} className="border-b border-slate-50">
+                          <td className="py-1 pr-4 text-slate-500">{e.row}</td>
+                          <td className="py-1 pr-4 font-mono text-slate-700">{e.course_code}</td>
+                          <td className="py-1 pr-4 font-mono text-slate-700">{e.employee_id}</td>
+                          <td className="py-1 text-red-600">{e.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>

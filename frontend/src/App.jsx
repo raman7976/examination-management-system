@@ -9,37 +9,38 @@ import SeatingManager from './pages/SeatingManager.jsx';
 import SeatingArrangement from './pages/SeatingArrangement.jsx';
 import CourseSeatingPDF from './pages/CourseSeatingPDF.jsx';
 import PastExams from './pages/PastExams.jsx';
-import ProtectedRoute from './components/ProtectedRoute'; // 
+import Registration from './pages/Registration.jsx';
+import InvigilatorPortal from './pages/InvigilatorPortal.jsx';
+import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 import './App.css';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* ========================================== */}
-        {/* PUBLIC ROUTES (No token required)          */}
-        {/* ========================================== */}
+        {/* PUBLIC ROUTES */}
         <Route path="/" element={<LoginPage />} />
         <Route path="/forgotPassword" element={<ForgotPassword />} />
 
-        {/* ========================================== */}
-        {/* PROTECTED ROUTES (Requires VIP Wristband)  */}
-        {/* ========================================== */}
-        <Route element={<ProtectedRoute />}>
-          
+        {/* ADMIN-ONLY: full dashboard (requires JWT + role=admin) */}
+        <Route element={<AdminRoute />}>
           <Route path="/dashboard" element={<Dashboard />}>
-            {/* These are "Children" - they render inside the <Outlet /> */}
-            <Route path="add-exam"        element={<AddExam />} />
-            <Route path="add-course"      element={<AddCourse />} />
-            <Route path="smart-scheduling" element={<SmartScheduling />} />
-            <Route path="seating-manager" element={<SeatingManager />} />
+            <Route path="registration"        element={<Registration />} />
+            <Route path="add-exam"            element={<AddExam />} />
+            <Route path="add-course"          element={<AddCourse />} />
+            <Route path="smart-scheduling"    element={<SmartScheduling />} />
+            <Route path="seating-manager"     element={<SeatingManager />} />
             <Route path="seating-arrangement" element={<SeatingArrangement />} />
-            <Route path="pdf-reports" element={<CourseSeatingPDF />} />
-            <Route path="past-exams" element={<PastExams />} />
+            <Route path="pdf-reports"         element={<CourseSeatingPDF />} />
+            <Route path="past-exams"          element={<PastExams />} />
           </Route>
-          
         </Route>
 
+        {/* INVIGILATOR: placeholder portal (requires JWT, any role) */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/invigilator-portal" element={<InvigilatorPortal />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

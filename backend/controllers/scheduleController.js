@@ -29,9 +29,10 @@ export const getUnscheduledCourses = async (req, res) => {
     try {
         const [rows] = await db.execute(
             `SELECT c.course_code, c.course_name, c.total_students, c.short_name,
-                    GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructors
+                    GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructors
              FROM courses c
              LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+             LEFT JOIN users u ON ci.user_id = u.id
              WHERE c.course_code NOT IN (SELECT course_code FROM scheduled_exams)
              GROUP BY c.course_code, c.course_name, c.total_students, c.short_name
              ORDER BY c.course_code`
@@ -109,11 +110,12 @@ export const getScheduledCourses = async (req, res) => {
         const [rows] = await db.execute(
             `SELECT se.id, se.slot_id, se.course_code,
                     c.course_name, c.total_students, c.short_name,
-                    GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructors,
+                    GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructors,
                     es.exam_date, es.exam_day, es.start_time, es.end_time
              FROM scheduled_exams se
              JOIN courses c ON se.course_code = c.course_code
              LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+             LEFT JOIN users u ON ci.user_id = u.id
              JOIN exam_slots es ON se.slot_id = es.id
              GROUP BY se.id, se.slot_id, se.course_code, c.course_name, c.total_students, c.short_name,
                       es.exam_date, es.exam_day, es.start_time, es.end_time

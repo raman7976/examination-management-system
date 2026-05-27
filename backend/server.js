@@ -7,6 +7,7 @@ import examRoutes from './routes/examRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import scheduleRoutes from './routes/scheduleRoutes.js';
 import seatingRoutes from './routes/seatingRoutes.js';
+import registrationRoutes from './routes/registrationRoutes.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -35,6 +36,7 @@ app.use('/api/exams', examRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/seating', seatingRoutes);
+app.use('/api/registration', registrationRoutes);
 
 
 

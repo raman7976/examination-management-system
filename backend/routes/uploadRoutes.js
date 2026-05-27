@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../middleware/middleware1.js';
-import { uploadCourses, uploadEnrollments, resetSemesterData, getCourseList, getEnrollmentList } from '../controllers/uploadController.js';
+import { uploadCourses, uploadEnrollments, resetSemesterData, getCourseList, getEnrollmentList, uploadCourseInstructors, downloadCourseInstructorTemplate } from '../controllers/uploadController.js';
 
 const router = express.Router();
 
@@ -60,6 +60,13 @@ const handleUpload = (multerMiddleware) => (req, res, next) => {
 
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  PUBLIC ROUTE — No auth needed
+// ═════════════════════════════════════════════════════════════════════════════
+
+// GET /api/upload/course-instructor-template — downloadable .xlsx template
+router.get('/course-instructor-template', downloadCourseInstructorTemplate);
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  ROUTES — Protected by JWT auth
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -87,5 +94,12 @@ router.get('/courses', getCourseList);
 
 // GET /api/upload/enrollments — Fetch enrollment list (with optional search)
 router.get('/enrollments', getEnrollmentList);
+
+// POST /api/upload/course-instructors — Link invigilators to courses via Excel
+router.post(
+    '/course-instructors',
+    handleUpload(xlsxUpload.single('file')),
+    uploadCourseInstructors
+);
 
 export default router;

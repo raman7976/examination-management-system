@@ -85,4 +85,15 @@ export const getExamSessions = () => API.get('/seating/sessions');
 export const getExamSessionById = (id) => API.get(`/seating/sessions/${id}`);
 export const deleteExamSession = (id) => API.delete(`/seating/sessions/${id}`);
 
+// Registration Routes
+export const registerInvigilator         = (data)     => API.post('/registration/register', data);
+export const bulkRegisterInvigilators    = (formData) => API.post('/registration/bulk-upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const getInvigilators             = (search = '') => API.get(`/registration/invigilators?search=${encodeURIComponent(search)}`);
+export const deleteInvigilator           = (id)        => API.delete(`/registration/invigilators/${id}`);
+export const downloadInvigilatorTemplate = ()          => API.get('/registration/template', { responseType: 'blob' });
+
+// Course-Instructor Mapping Routes
+export const uploadCourseInstructors          = (formData) => API.post('/upload/course-instructors', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const downloadCourseInstructorTemplate = ()         => API.get('/upload/course-instructor-template', { responseType: 'blob' });
+
 export default API;

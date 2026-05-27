@@ -264,10 +264,11 @@ export const generateAndExportAllSeating = async (req, res) => {
         const [allCourses] = await db.execute(`
             SELECT se.id, se.slot_id, se.course_code,
                    c.course_name, c.total_students AS student_count,
-                   GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructor_name
+                   GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructor_name
             FROM   scheduled_exams se
             JOIN   courses c ON se.course_code = c.course_code
             LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+            LEFT JOIN users u ON ci.user_id = u.id
             GROUP BY se.id
             ORDER BY c.total_students DESC
         `);
@@ -482,7 +483,7 @@ export const getSeatingPlan = async (req, res) => {
             `SELECT
                  sa.id,
                  co.course_name,
-                 GROUP_CONCAT(DISTINCT ci.instructor_name SEPARATOR ', ') AS instructor_name,
+                 GROUP_CONCAT(DISTINCT COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructor_name,
                  co.total_students,
                  cl.room_name,
                  sa.lane,
@@ -495,6 +496,7 @@ export const getSeatingPlan = async (req, res) => {
              JOIN   scheduled_exams      se ON sa.scheduled_exam_id = se.id
              JOIN   courses              co ON se.course_code       = co.course_code
              LEFT JOIN course_instructors ci ON co.course_code      = ci.course_code
+             LEFT JOIN users             u  ON ci.user_id           = u.id
              JOIN   classrooms           cl ON sa.classroom_id      = cl.id
              JOIN   exam_slots           es ON se.slot_id           = es.id
              WHERE  se.slot_id = ?
@@ -710,10 +712,11 @@ export const previewSlotSeating = async (req, res) => {
         const [courses] = await db.execute(
             `SELECT se.id, se.slot_id, se.course_code,
                     c.course_name, c.total_students AS student_count,
-                    GROUP_CONCAT(ci.instructor_name SEPARATOR ', ') AS instructor_name
+                    GROUP_CONCAT(COALESCE(u.full_name, ci.instructor_name) SEPARATOR ', ') AS instructor_name
              FROM   scheduled_exams se
              JOIN   courses c ON se.course_code = c.course_code
              LEFT JOIN course_instructors ci ON c.course_code = ci.course_code
+             LEFT JOIN users u ON ci.user_id = u.id
              WHERE  se.slot_id = ?
              GROUP BY se.id
              ORDER BY c.total_students DESC`,

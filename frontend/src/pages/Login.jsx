@@ -18,8 +18,14 @@ function Login() {
       const { data } = await loginUser({ email, password });
       alert("✅ " + data.message);
       localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      navigate("/dashboard");
+      localStorage.setItem("user", JSON.stringify({
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        role: data.user.role,
+      }));
+      if (data.user.role === 'admin') navigate('/dashboard');
+      else navigate('/invigilator-portal');
     } catch (error) {
       setError(error.response?.data?.message || "Login Failed. Please check your credentials.");
     } finally {
