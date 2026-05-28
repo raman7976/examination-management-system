@@ -372,121 +372,177 @@ export const updateOverride = async (req, res) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  GENERATE — uses active period, carries sibling-period balance into algorithm
+//  Shared helper — runs the algorithm and returns proposals WITHOUT writing.
+//  Used by both `previewSchedule` (in-memory only) and the legacy
+//  `generateSchedule` (which then commits).
+// ═════════════════════════════════════════════════════════════════════════════
+async function _computeScheduleProposal(conn, periodId) {
+    const period = await loadPeriod(conn, periodId);
+
+    const [slots] = await conn.query(`
+        SELECT DISTINCT es.id AS slot_id, es.exam_date, es.start_time
+        FROM exam_slots es
+        JOIN scheduled_exams se ON se.slot_id = es.id
+        JOIN seating_allocations sa ON sa.scheduled_exam_id = se.id
+        WHERE es.exam_period_id = ?
+        ORDER BY es.exam_date, es.start_time
+    `, [periodId]);
+    if (slots.length === 0)
+        throw Object.assign(new Error('No slots have seating allocations yet. Run Seating Manager first.'), { http: 400 });
+
+    const [loadRows] = await conn.query(`
+        SELECT se.slot_id, sa.classroom_id, c.location_order,
+               SUM(sa.student_count) AS students_in_room
+        FROM seating_allocations sa
+        JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+        JOIN exam_slots es      ON se.slot_id = es.id
+        JOIN classrooms c       ON sa.classroom_id = c.id
+        WHERE es.exam_period_id = ?
+        GROUP BY se.slot_id, sa.classroom_id, c.location_order
+    `, [periodId]);
+    const roomLoadBySlot = {};
+    for (const r of loadRows) {
+        if (!roomLoadBySlot[r.slot_id]) roomLoadBySlot[r.slot_id] = [];
+        roomLoadBySlot[r.slot_id].push({
+            classroom_id:     r.classroom_id,
+            location_order:   r.location_order,
+            students_in_room: Number(r.students_in_room),
+        });
+    }
+
+    const [ciRows] = await conn.query(`
+        SELECT se.slot_id, se.course_code,
+               GROUP_CONCAT(DISTINCT sa.classroom_id) AS classroom_ids,
+               GROUP_CONCAT(DISTINCT u.id)            AS instructor_user_ids
+        FROM scheduled_exams se
+        JOIN seating_allocations sa ON sa.scheduled_exam_id = se.id
+        JOIN exam_slots es          ON se.slot_id = es.id
+        LEFT JOIN course_instructors ci
+            ON ci.course_code = se.course_code AND ci.semester_label = ?
+        LEFT JOIN users u ON u.employee_id = ci.employee_id AND u.role != 'admin'
+        WHERE es.exam_period_id = ?
+        GROUP BY se.slot_id, se.course_code
+    `, [period.semester_label, periodId]);
+    const courseInstructorsBySlot = {};
+    for (const r of ciRows) {
+        if (!r.instructor_user_ids) continue;
+        if (!courseInstructorsBySlot[r.slot_id]) courseInstructorsBySlot[r.slot_id] = [];
+        courseInstructorsBySlot[r.slot_id].push({
+            course_code:         r.course_code,
+            classroom_ids:       String(r.classroom_ids).split(',').map(Number).filter(Boolean),
+            instructor_user_ids: String(r.instructor_user_ids).split(',').map(Number).filter(Boolean),
+        });
+    }
+
+    const [siblingRows] = await conn.query(
+        `SELECT id FROM exam_periods WHERE semester_label = ? AND exam_type != ?`,
+        [period.semester_label, period.exam_type]
+    );
+    const siblingId = siblingRows.length > 0 ? siblingRows[0].id : null;
+
+    const [invRows] = await conn.query(
+        `SELECT
+            u.id AS user_id, u.role,
+            COALESCE(ov.override_target, rt.target_duties, 0)  AS base_target,
+            ${siblingId ? `(
+                (SELECT COUNT(*) FROM invigilator_assignments ia WHERE ia.user_id = u.id AND ia.exam_period_id = ?)
+                -
+                COALESCE(
+                    (SELECT ov2.override_target FROM invigilator_target_overrides ov2
+                        WHERE ov2.user_id = u.id AND ov2.exam_period_id = ?),
+                    (SELECT rt2.target_duties FROM invigilator_role_targets rt2
+                        WHERE rt2.role = u.role AND rt2.exam_period_id = ?),
+                    0
+                )
+            )` : '0'} AS previous_balance
+         FROM users u
+         LEFT JOIN invigilator_role_targets     rt ON rt.role = u.role AND rt.exam_period_id = ?
+         LEFT JOIN invigilator_target_overrides ov ON ov.user_id = u.id AND ov.exam_period_id = ?
+         WHERE u.role != 'admin'`,
+        siblingId
+            ? [siblingId, siblingId, siblingId, periodId, periodId]
+            : [periodId, periodId]
+    );
+    const invigilators = invRows.map(r => ({
+        user_id:          r.user_id,
+        role:             r.role,
+        base_target:      Number(r.base_target),
+        previous_balance: Number(r.previous_balance),
+        // Symmetric semester-wide carryover (S1).
+        effective_target: Math.max(0, Number(r.base_target) - Number(r.previous_balance)),
+    }));
+
+    if (invigilators.length === 0)
+        throw Object.assign(new Error('No invigilators registered.'), { http: 400 });
+
+    const { assignments, summary, warnings } = runInvigilatorAlgorithm(
+        slots, roomLoadBySlot, courseInstructorsBySlot, invigilators
+    );
+
+    return { period, slots, assignments, summary, warnings };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  POST /api/invigilator-scheduling/generate-preview
+//  Runs the algorithm in-memory and returns proposals WITHOUT writing to DB.
+//  The frontend stages these as pending edits; clicking Save commits via the
+//  existing applyChanges endpoint.
+// ═════════════════════════════════════════════════════════════════════════════
+export const previewSchedule = async (req, res) => {
+    const conn = await db.getConnection();
+    try {
+        const periodId = await resolveActivePeriod(conn, req.body?.period_id);
+        const { period, slots, assignments, summary, warnings } = await _computeScheduleProposal(conn, periodId);
+
+        // Enrich each proposal with user metadata so chips can render names/roles
+        // without a second frontend fetch.
+        const userIds = Array.from(new Set(assignments.map(a => a.user_id)));
+        let userMap = new Map();
+        if (userIds.length > 0) {
+            const ph = userIds.map(() => '?').join(',');
+            const [users] = await conn.query(
+                `SELECT id, full_name, role, employee_id FROM users WHERE id IN (${ph})`,
+                userIds
+            );
+            userMap = new Map(users.map(u => [u.id, u]));
+        }
+        const enriched = assignments.map(a => ({
+            ...a,
+            full_name:   userMap.get(a.user_id)?.full_name   || `User #${a.user_id}`,
+            role:        userMap.get(a.user_id)?.role        || null,
+            employee_id: userMap.get(a.user_id)?.employee_id || null,
+        }));
+
+        res.json({
+            success: true,
+            exam_period: period,
+            slots_count: slots.length,
+            assignments: enriched,
+            summary,
+            warnings,
+            message: `Previewed ${enriched.length} assignments for ${period.semester_label} — ${period.exam_type}. Nothing saved yet.`,
+        });
+    } catch (err) {
+        const status = err.http || 500;
+        console.error('previewSchedule error:', err);
+        res.status(status).json({ success: false, message: err.message || 'Failed to preview schedule.' });
+    } finally {
+        conn.release();
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  DEPRECATED — POST /api/invigilator-scheduling/generate
+//  Legacy "generate AND save" path. Kept so any external callers don't break.
+//  New UI uses /generate-preview + applyChanges instead.
 // ═════════════════════════════════════════════════════════════════════════════
 export const generateSchedule = async (req, res) => {
     const conn = await db.getConnection();
     try {
         const periodId = await resolveActivePeriod(conn, req.body?.period_id);
-        const period = await loadPeriod(conn, periodId);
-
-        // Load slots that have at least one seating allocation
-        const [slots] = await conn.query(`
-            SELECT DISTINCT es.id AS slot_id, es.exam_date, es.start_time
-            FROM exam_slots es
-            JOIN scheduled_exams se ON se.slot_id = es.id
-            JOIN seating_allocations sa ON sa.scheduled_exam_id = se.id
-            ORDER BY es.exam_date, es.start_time
-        `);
-        if (slots.length === 0)
-            return res.status(400).json({ success: false, message: 'No slots have seating allocations yet. Run Seating Manager first.' });
-
-        // Per-slot room load
-        const [loadRows] = await conn.query(`
-            SELECT se.slot_id, sa.classroom_id, c.location_order,
-                   SUM(sa.student_count) AS students_in_room
-            FROM seating_allocations sa
-            JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
-            JOIN classrooms c ON sa.classroom_id = c.id
-            GROUP BY se.slot_id, sa.classroom_id, c.location_order
-        `);
-        const roomLoadBySlot = {};
-        for (const r of loadRows) {
-            if (!roomLoadBySlot[r.slot_id]) roomLoadBySlot[r.slot_id] = [];
-            roomLoadBySlot[r.slot_id].push({
-                classroom_id:     r.classroom_id,
-                location_order:   r.location_order,
-                students_in_room: Number(r.students_in_room),
-            });
-        }
-
-        // Course instructors per (slot, course) — scoped to this period's semester
-        const [ciRows] = await conn.query(`
-            SELECT se.slot_id, se.course_code,
-                   GROUP_CONCAT(DISTINCT sa.classroom_id) AS classroom_ids,
-                   GROUP_CONCAT(DISTINCT u.id)            AS instructor_user_ids
-            FROM scheduled_exams se
-            JOIN seating_allocations sa ON sa.scheduled_exam_id = se.id
-            JOIN exam_slots es          ON se.slot_id = es.id
-            LEFT JOIN course_instructors ci
-                ON ci.course_code = se.course_code AND ci.semester_label = ?
-            LEFT JOIN users u ON u.employee_id = ci.employee_id AND u.role != 'admin'
-            WHERE es.exam_period_id = ?
-            GROUP BY se.slot_id, se.course_code
-        `, [period.semester_label, periodId]);
-        const courseInstructorsBySlot = {};
-        for (const r of ciRows) {
-            if (!r.instructor_user_ids) continue;
-            if (!courseInstructorsBySlot[r.slot_id]) courseInstructorsBySlot[r.slot_id] = [];
-            courseInstructorsBySlot[r.slot_id].push({
-                course_code:         r.course_code,
-                classroom_ids:       String(r.classroom_ids).split(',').map(Number).filter(Boolean),
-                instructor_user_ids: String(r.instructor_user_ids).split(',').map(Number).filter(Boolean),
-            });
-        }
-
-        // Sibling period for carryover (other exam_type, same semester)
-        const [siblingRows] = await conn.query(
-            `SELECT id FROM exam_periods WHERE semester_label = ? AND exam_type != ?`,
-            [period.semester_label, period.exam_type]
-        );
-        const siblingId = siblingRows.length > 0 ? siblingRows[0].id : null;
-
-        // Invigilator pool with base targets (active period) and previous_balance (sibling)
-        const [invRows] = await conn.query(
-            `SELECT
-                u.id AS user_id, u.role,
-                COALESCE(ov.override_target, rt.target_duties, 0)  AS base_target,
-                ${siblingId ? `(
-                    (SELECT COUNT(*) FROM invigilator_assignments ia WHERE ia.user_id = u.id AND ia.exam_period_id = ?)
-                    -
-                    COALESCE(
-                        (SELECT ov2.override_target FROM invigilator_target_overrides ov2
-                            WHERE ov2.user_id = u.id AND ov2.exam_period_id = ?),
-                        (SELECT rt2.target_duties FROM invigilator_role_targets rt2
-                            WHERE rt2.role = u.role AND rt2.exam_period_id = ?),
-                        0
-                    )
-                )` : '0'} AS previous_balance
-             FROM users u
-             LEFT JOIN invigilator_role_targets     rt ON rt.role = u.role AND rt.exam_period_id = ?
-             LEFT JOIN invigilator_target_overrides ov ON ov.user_id = u.id AND ov.exam_period_id = ?
-             WHERE u.role != 'admin'`,
-            siblingId
-                ? [siblingId, siblingId, siblingId, periodId, periodId]
-                : [periodId, periodId]
-        );
-        const invigilators = invRows.map(r => ({
-            user_id:          r.user_id,
-            role:             r.role,
-            base_target:      Number(r.base_target),
-            previous_balance: Number(r.previous_balance),
-            // Symmetric semester-wide carryover (S1):
-            //   previous_balance > 0  → user was OVER in midterm  → endterm target shrinks
-            //   previous_balance < 0  → user was UNDER in midterm → endterm target grows
-            //   Floored at 0 so it never goes negative.
-            effective_target: Math.max(0, Number(r.base_target) - Number(r.previous_balance)),
-        }));
-
-        if (invigilators.length === 0)
-            return res.status(400).json({ success: false, message: 'No invigilators registered.' });
-
-        const { assignments, summary, warnings } = runInvigilatorAlgorithm(
-            slots, roomLoadBySlot, courseInstructorsBySlot, invigilators
-        );
+        const { period, slots, assignments, summary, warnings } = await _computeScheduleProposal(conn, periodId);
 
         await conn.beginTransaction();
-        // Hard reset ONLY the active period's rows
         const [del] = await conn.query('DELETE FROM invigilator_assignments WHERE exam_period_id = ?', [periodId]);
         let inserted = 0;
         if (assignments.length > 0) {

@@ -563,6 +563,49 @@ export const resetSemesterData = async (req, res) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  GET /api/upload/enrollment-mismatches
+//  Surfaces the "expected vs actual" course-enrollment gap for the active
+//  semester. Persisted view of what uploadEnrollments computed in its response —
+//  so the AddCourse page can show mismatches across refreshes / tab switches.
+// ═════════════════════════════════════════════════════════════════════════════
+export const getEnrollmentMismatches = async (req, res) => {
+    try {
+        const semester = await getActiveSemesterLabel(null, req.query.period_id);
+        const [rows] = await db.query(`
+            SELECT
+                c.course_code,
+                c.course_name,
+                c.total_students            AS expected,
+                COUNT(ce.roll_number)       AS actual,
+                (c.total_students - COUNT(ce.roll_number)) AS gap
+            FROM courses c
+            LEFT JOIN course_enrollments ce
+                ON c.course_code = ce.course_code AND ce.semester_label = c.semester_label
+            WHERE c.semester_label = ?
+            GROUP BY c.course_code, c.course_name, c.total_students
+            HAVING COUNT(ce.roll_number) != c.total_students
+            ORDER BY gap DESC
+        `, [semester]);
+
+        res.json({
+            success: true,
+            semester,
+            mismatches: rows.map(m => ({
+                course_code: m.course_code,
+                course_name: m.course_name,
+                expected:    Number(m.expected),
+                actual:      Number(m.actual),
+                gap:         Number(m.gap),
+            })),
+        });
+    } catch (err) {
+        const status = err.http || 500;
+        console.error('getEnrollmentMismatches error:', err);
+        res.status(status).json({ success: false, message: err.message || 'Failed to fetch enrollment mismatches.' });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  GET /api/upload/courses
 //  Returns the course master list with optional search
 // ═════════════════════════════════════════════════════════════════════════════

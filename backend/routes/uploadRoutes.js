@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../middleware/middleware1.js';
-import { uploadCourses, uploadEnrollments, resetSemesterData, getCourseList, getEnrollmentList, uploadCourseInstructors, downloadCourseInstructorTemplate } from '../controllers/uploadController.js';
+import { uploadCourses, uploadEnrollments, resetSemesterData, getCourseList, getEnrollmentList, uploadCourseInstructors, downloadCourseInstructorTemplate, getEnrollmentMismatches } from '../controllers/uploadController.js';
 
 const router = express.Router();
 
@@ -94,6 +94,9 @@ router.get('/courses', getCourseList);
 
 // GET /api/upload/enrollments — Fetch enrollment list (with optional search)
 router.get('/enrollments', getEnrollmentList);
+
+// GET /api/upload/enrollment-mismatches — Persistent expected-vs-actual gap
+router.get('/enrollment-mismatches', getEnrollmentMismatches);
 
 // POST /api/upload/course-instructors — Link invigilators to courses via Excel
 router.post(

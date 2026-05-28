@@ -10,6 +10,7 @@ import {
     getInvigilatorList,
     updateOverride,
     generateSchedule,
+    previewSchedule,
     getSchedule,
     addAssignment,
     reassignAssignment,
@@ -39,7 +40,8 @@ router.get('/invigilators',                  getInvigilatorList);
 router.put('/invigilators/:user_id/override', updateOverride);
 
 // ── Schedule generation, read, batched edits, wipe ──────────────────────────
-router.post('/generate',       generateSchedule);
+router.post('/generate',         generateSchedule);   // legacy: generate + save in one call
+router.post('/generate-preview', previewSchedule);    // run algorithm in-memory, no DB write
 router.post('/apply-changes',  applyChanges);
 router.get('/schedule',        getSchedule);
 router.delete('/schedule',     clearSchedule);
