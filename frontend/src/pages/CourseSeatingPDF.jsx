@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getExamSlots, getPlanView, saveExamSession } from '../api/api.js';
 import { usePeriod } from '../context/usePeriod.js';
+import PeriodScopedEmptyState from '../components/PeriodScopedEmptyState.jsx';
 import logo from '../assets/lnmiitLogo.jpg';
 
 // Derive a default academic year from today's date (e.g. "2024-25" for May 2025).
@@ -540,7 +541,7 @@ export default function CourseSeatingPDF() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <svg className="animate-spin h-8 w-8 text-[#8B1A1A]" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-8 w-8 text-brand-500" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
@@ -553,47 +554,47 @@ export default function CourseSeatingPDF() {
             {/* Page Header + Save Button */}
             <div className="flex items-start justify-between mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">PDF Reports</h2>
-                    <p className="text-sm text-slate-500 mt-1">Generate course-wise or hall-wise seating plan / attendance sheet PDFs</p>
+                    <h2 className="text-2xl font-bold text-brand-500 tracking-tight">PDF Reports</h2>
+                    <p className="text-sm text-textMuted mt-1">Generate course-wise or hall-wise seating plan / attendance sheet PDFs</p>
                 </div>
                 <button onClick={handleSaveSession} disabled={saving}
-                    className={`px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-lg shadow-sm transition-all flex items-center gap-2 cursor-pointer ${saving ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-[#8B1A1A] text-white hover:bg-[#721515] hover:shadow-md'}`}>
+                    className={`px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-lg shadow-sm transition-all flex items-center gap-2 cursor-pointer ${saving ? 'bg-textFaint text-textMuted cursor-not-allowed' : 'bg-brand-500 text-white hover:bg-brand-600 hover:shadow-md'}`}>
                     {saving ? 'Saving...' : '💾 Save Session'}
                 </button>
             </div>
 
             {/* Save Message */}
             {saveMsg.text && (
-                <div className={`mb-4 p-3 rounded-lg border text-sm ${saveMsg.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                <div className={`mb-4 p-3 rounded-lg border text-sm ${saveMsg.type === 'error' ? 'bg-danger/10 text-danger border-danger/30' : 'bg-success/10 text-success border-success/30'}`}>
                     {saveMsg.text}
                 </div>
             )}
 
             {/* Exam Config: Local Period (data filter) + Type + Semester + Year */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5 mb-5">
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">Exam Configuration</h3>
+            <div className="bg-surface rounded-xl shadow-lg border border-border p-5 mb-5">
+                <h3 className="text-xs font-bold text-text uppercase tracking-wider mb-4">Exam Configuration</h3>
 
                 <div className="grid grid-cols-3 gap-4">
                     <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Exam Type</label>
+                        <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">Exam Type</label>
                         <select value={examType} onChange={(e) => setExamType(e.target.value)}
-                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40 cursor-pointer">
+                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-border bg-surface2 text-text focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40 cursor-pointer">
                             <option value="Mid Term Examination">Mid Term Examination</option>
                             <option value="End Term Examination">End Term Examination</option>
                             <option value="Summer Term Examination">Summer Term Examination</option>
                         </select>
                     </div>
                     <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Semester</label>
+                        <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">Semester</label>
                         <select value={semesterType} onChange={(e) => setSemesterType(e.target.value)}
-                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40 cursor-pointer">
+                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-border bg-surface2 text-text focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40 cursor-pointer">
                             <option value="Even">Even Semester</option>
                             <option value="Odd">Odd Semester</option>
                         </select>
                     </div>
                     <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                            Academic Year <span className="text-slate-400 normal-case font-normal">(type any value)</span>
+                        <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">
+                            Academic Year <span className="text-textFaint normal-case font-normal">(type any value)</span>
                         </label>
                         <input
                             type="text"
@@ -601,27 +602,27 @@ export default function CourseSeatingPDF() {
                             value={academicYear}
                             onChange={(e) => setAcademicYear(e.target.value)}
                             placeholder="e.g. 2024-25"
-                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40"
+                            className="w-full px-3 py-2.5 text-sm rounded-lg border border-border bg-surface2 text-text focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40"
                         />
                         <datalist id="academic-year-suggestions">
                             {academicYearSuggestions.map(y => <option key={y} value={y} />)}
                         </datalist>
                     </div>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-3">PDF Title: <span className="font-semibold text-slate-600">{pdfTitle}</span></p>
+                <p className="text-[11px] text-textFaint mt-3">PDF Title: <span className="font-semibold text-textMuted">{pdfTitle}</span></p>
             </div>
 
             {/* Search */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5 mb-5">
+            <div className="bg-surface rounded-xl shadow-lg border border-border p-5 mb-5">
                 <div className="relative">
-                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textFaint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                     </svg>
                     <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder={viewMode === 'course' ? 'Search by course code or name...' : 'Search by hall name (e.g. LH-1)...'}
-                        className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40 transition-all" />
+                        className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-border bg-surface2 text-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40 transition-all" />
                     {searchQuery && (
-                        <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                        <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-textFaint hover:text-textMuted cursor-pointer">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     )}
@@ -629,21 +630,24 @@ export default function CourseSeatingPDF() {
             </div>
 
             {/* Day → Slot Selection */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5 mb-5">
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded bg-[#8B1A1A] flex items-center justify-center text-white text-[10px] font-bold">1</span>
+            <div className="bg-surface rounded-xl shadow-lg border border-border p-5 mb-5">
+                <h3 className="text-xs font-bold text-text uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded bg-brand-500 flex items-center justify-center text-white text-[10px] font-bold">1</span>
                     Select Exam Day
                 </h3>
                 {slotsByDate.length === 0 ? (
-                    <p className="text-sm text-slate-400 text-center py-4">No exam days found.</p>
+                    <PeriodScopedEmptyState noun="exam days">
+                        PDF reports are scoped to the active exam period.
+                        Switch to a period that has slots and a saved seating plan.
+                    </PeriodScopedEmptyState>
                 ) : (
                     <div className="flex flex-wrap gap-2">
                         {slotsByDate.map((group) => (
                             <button key={group.date}
                                 onClick={() => { setSelectedDay(group.date); setSelectedSlotId(null); setSeatingData([]); }}
                                 className={`px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 border-2 cursor-pointer ${selectedDay === group.date
-                                    ? 'bg-[#8B1A1A] text-white border-[#8B1A1A] shadow-md'
-                                    : 'bg-white text-slate-700 border-slate-200 hover:border-[#8B1A1A]/40 hover:bg-red-50/50'
+                                    ? 'bg-brand-500 text-white border-brand-500 shadow-md'
+                                    : 'bg-surface text-text border-border hover:border-brand-500/40 hover:bg-danger/10/50'
                                     }`}>
                                 <div className="font-bold">{group.day}</div>
                                 <div className="text-[10px] mt-0.5 opacity-80">{formatDateDisplay(group.date)}</div>
@@ -654,9 +658,9 @@ export default function CourseSeatingPDF() {
 
                 {/* Slot Chips */}
                 {selectedDay && daySlots.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-slate-100">
-                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-2">
-                            <span className="w-5 h-5 rounded bg-[#8B1A1A] flex items-center justify-center text-white text-[10px] font-bold">2</span>
+                    <div className="mt-4 pt-4 border-t border-border">
+                        <h3 className="text-xs font-bold text-text uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <span className="w-5 h-5 rounded bg-brand-500 flex items-center justify-center text-white text-[10px] font-bold">2</span>
                             Select Time Slot
                         </h3>
                         <div className="flex flex-wrap gap-2">
@@ -666,11 +670,11 @@ export default function CourseSeatingPDF() {
                                     <button key={slot.id}
                                         onClick={() => setSelectedSlotId(isActive ? null : slot.id)}
                                         className={`relative px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 border-2 cursor-pointer ${isActive
-                                            ? 'bg-[#8B1A1A] text-white border-[#8B1A1A] shadow-md'
-                                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#8B1A1A]/40 hover:bg-red-50/50'
+                                            ? 'bg-brand-500 text-white border-brand-500 shadow-md'
+                                            : 'bg-surface text-text border-border hover:border-brand-500/40 hover:bg-danger/10/50'
                                             }`}>
                                         {formatTime12(slot.start_time)} – {formatTime12(slot.end_time)}
-                                        {isActive && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white" />}
+                                        {isActive && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-success/100 rounded-full border-2 border-white" />}
                                     </button>
                                 );
                             })}
@@ -680,28 +684,28 @@ export default function CourseSeatingPDF() {
             </div>
 
             {/* Download Section */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
-                <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+            <div className="bg-surface rounded-xl shadow-lg border border-border overflow-hidden">
+                <div className="px-5 pt-5 pb-3 border-b border-border">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                            <span className="w-5 h-5 rounded bg-[#8B1A1A] flex items-center justify-center text-white text-[10px] font-bold">3</span>
+                        <h3 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                            <span className="w-5 h-5 rounded bg-brand-500 flex items-center justify-center text-white text-[10px] font-bold">3</span>
                             Download PDFs
                         </h3>
                         {((viewMode === 'course' && filteredCourses.length > 0) || (viewMode === 'hall' && filteredHalls.length > 0)) && (
                             <button onClick={handleDownloadAll}
-                                className="px-4 py-2 bg-[#8B1A1A] text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-[#721515] transition-all cursor-pointer shadow-sm hover:shadow-md">
+                                className="px-4 py-2 bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-brand-600 transition-all cursor-pointer shadow-sm hover:shadow-md">
                                 ⬇ Download All PDFs
                             </button>
                         )}
                     </div>
                     {/* Mode Toggle */}
-                    <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+                    <div className="flex gap-1 bg-surface2 rounded-lg p-1 w-fit">
                         <button onClick={() => setViewMode('course')}
-                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${viewMode === 'course' ? 'bg-[#8B1A1A] text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
+                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${viewMode === 'course' ? 'bg-brand-500 text-white shadow-sm' : 'text-textMuted hover:text-text'}`}>
                             📚 Course Wise
                         </button>
                         <button onClick={() => setViewMode('hall')}
-                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${viewMode === 'hall' ? 'bg-[#8B1A1A] text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
+                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${viewMode === 'hall' ? 'bg-brand-500 text-white shadow-sm' : 'text-textMuted hover:text-text'}`}>
                             🏛️ Hall Wise
                         </button>
                     </div>
@@ -709,46 +713,46 @@ export default function CourseSeatingPDF() {
 
                 {!selectedSlotId ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
-                        <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                            <svg className="w-7 h-7 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <div className="w-14 h-14 rounded-full bg-surface2 flex items-center justify-center mb-4">
+                            <svg className="w-7 h-7 text-textFaint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                             </svg>
                         </div>
-                        <p className="text-sm font-medium text-slate-400">Select a day and time slot to view {viewMode === 'course' ? 'courses' : 'halls'}</p>
+                        <p className="text-sm font-medium text-textFaint">Select a day and time slot to view {viewMode === 'course' ? 'courses' : 'halls'}</p>
                     </div>
                 ) : loadingPlan ? (
                     <div className="flex items-center justify-center py-16">
-                        <svg className="animate-spin h-6 w-6 text-[#8B1A1A]" fill="none" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-6 w-6 text-brand-500" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                         </svg>
-                        <span className="ml-3 text-sm text-slate-500">Loading seating data...</span>
+                        <span className="ml-3 text-sm text-textMuted">Loading seating data...</span>
                     </div>
                 ) : viewMode === 'course' ? (
                     /* ── COURSE-WISE LIST ── */
                     filteredCourses.length === 0 ? (
                         <div className="py-16 text-center">
-                            <p className="text-sm text-slate-400">
+                            <p className="text-sm text-textFaint">
                                 {courseGroups.length === 0 ? 'No micro-seating plan found. Generate it from the Seating Arrangement page first.' : `No courses match "${searchQuery}"`}
                             </p>
                         </div>
                     ) : (
                         <div className="divide-y divide-slate-100">
                             {filteredCourses.map((course) => (
-                                <div key={course.course_code} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                                <div key={course.course_code} className="px-5 py-4 flex items-center justify-between hover:bg-surface2/80 transition-colors">
                                     <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-lg bg-[#8B1A1A]/10 flex items-center justify-center text-[#8B1A1A] text-sm font-bold">📄</div>
+                                        <div className="w-10 h-10 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-500 text-sm font-bold">📄</div>
                                         <div>
                                             <div className="flex items-center gap-2">
-                                                <span className="font-mono text-xs font-bold text-[#8B1A1A] tracking-wide">{course.course_code}</span>
-                                                <span className="text-xs text-slate-400">·</span>
-                                                <span className="text-sm font-medium text-slate-800">{course.course_name}</span>
+                                                <span className="font-mono text-xs font-bold text-brand-500 tracking-wide">{course.course_code}</span>
+                                                <span className="text-xs text-textFaint">·</span>
+                                                <span className="text-sm font-medium text-text">{course.course_name}</span>
                                             </div>
-                                            <p className="text-[11px] text-slate-400 mt-0.5">{course.students.length} student{course.students.length !== 1 ? 's' : ''}</p>
+                                            <p className="text-[11px] text-textFaint mt-0.5">{course.students.length} student{course.students.length !== 1 ? 's' : ''}</p>
                                         </div>
                                     </div>
                                     <button onClick={() => handleDownloadPDF(course)}
-                                        className="px-4 py-2 bg-white text-[#8B1A1A] text-[10px] font-bold uppercase tracking-wider rounded-lg border border-[#8B1A1A]/30 hover:bg-[#8B1A1A] hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md">
+                                        className="px-4 py-2 bg-surface text-brand-500 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-brand-500/30 hover:bg-brand-500 hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md">
                                         ⬇ Download PDF
                                     </button>
                                 </div>
@@ -759,7 +763,7 @@ export default function CourseSeatingPDF() {
                     /* ── HALL-WISE LIST ── */
                     filteredHalls.length === 0 ? (
                         <div className="py-16 text-center">
-                            <p className="text-sm text-slate-400">
+                            <p className="text-sm text-textFaint">
                                 {hallGroups.length === 0 ? 'No micro-seating plan found. Generate it from the Seating Arrangement page first.' : `No halls match "${searchQuery}"`}
                             </p>
                         </div>
@@ -771,47 +775,47 @@ export default function CourseSeatingPDF() {
                                     <div key={hall.room_name}>
                                         {/* Hall Header (clickable) */}
                                         <div
-                                            className="px-5 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors cursor-pointer"
+                                            className="px-5 py-4 flex items-center justify-between hover:bg-surface2/80 transition-colors cursor-pointer"
                                             onClick={() => setExpandedHalls(prev => ({ ...prev, [hall.room_name]: !prev[hall.room_name] }))}
                                         >
                                             <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold transition-colors ${isOpen ? 'bg-[#8B1A1A] text-white' : 'bg-blue-50 text-blue-700'}`}>
+                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold transition-colors ${isOpen ? 'bg-brand-500 text-white' : 'bg-info/10 text-info'}`}>
                                                     {isOpen ? '−' : '+'}
                                                 </div>
                                                 <div>
-                                                    <span className="font-mono text-sm font-bold text-slate-800">{hall.room_name}</span>
+                                                    <span className="font-mono text-sm font-bold text-text">{hall.room_name}</span>
                                                     <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="text-[11px] text-slate-400">{hall.students.length} students</span>
-                                                        <span className="text-[11px] text-slate-300">·</span>
-                                                        <span className="text-[11px] text-slate-400">{hall.courseList.length} course{hall.courseList.length !== 1 ? 's' : ''}</span>
+                                                        <span className="text-[11px] text-textFaint">{hall.students.length} students</span>
+                                                        <span className="text-[11px] text-textFaint">·</span>
+                                                        <span className="text-[11px] text-textFaint">{hall.courseList.length} course{hall.courseList.length !== 1 ? 's' : ''}</span>
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button onClick={(e) => { e.stopPropagation(); handleDownloadHallPDF(hall); }}
-                                                    className="px-3 py-1.5 bg-white text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-slate-200 hover:bg-slate-100 transition-all cursor-pointer shadow-sm">
+                                                    className="px-3 py-1.5 bg-surface text-textMuted text-[10px] font-bold uppercase tracking-wider rounded-lg border border-border hover:bg-surface2 transition-all cursor-pointer shadow-sm">
                                                     ⬇ All ({hall.room_name})
                                                 </button>
                                             </div>
                                         </div>
                                         {/* Expanded: courses inside this hall */}
                                         {isOpen && (
-                                            <div className="bg-slate-50/60 border-t border-slate-100">
+                                            <div className="bg-surface2/60 border-t border-border shadow-sm">
                                                 {hall.courseList.map((course) => (
-                                                    <div key={course.course_code} className="px-5 pl-16 py-3 flex items-center justify-between hover:bg-slate-100/60 transition-colors border-b border-slate-100 last:border-b-0">
+                                                    <div key={course.course_code} className="px-5 pl-16 py-3 flex items-center justify-between hover:bg-surface2/60 transition-colors border-b border-border last:border-b-0 shadow-sm">
                                                         <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded bg-[#8B1A1A]/10 flex items-center justify-center text-[#8B1A1A] text-xs font-bold">📄</div>
+                                                            <div className="w-8 h-8 rounded bg-brand-500/10 flex items-center justify-center text-brand-500 text-xs font-bold">📄</div>
                                                             <div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className="font-mono text-xs font-bold text-[#8B1A1A] tracking-wide">{course.course_code}</span>
-                                                                    <span className="text-xs text-slate-400">·</span>
-                                                                    <span className="text-sm font-medium text-slate-700">{course.course_name}</span>
+                                                                    <span className="font-mono text-xs font-bold text-brand-500 tracking-wide">{course.course_code}</span>
+                                                                    <span className="text-xs text-textFaint">·</span>
+                                                                    <span className="text-sm font-medium text-text">{course.course_name}</span>
                                                                 </div>
-                                                                <p className="text-[10px] text-slate-400 mt-0.5">{course.students.length} student{course.students.length !== 1 ? 's' : ''} in {hall.room_name}</p>
+                                                                <p className="text-[10px] text-textFaint mt-0.5">{course.students.length} student{course.students.length !== 1 ? 's' : ''} in {hall.room_name}</p>
                                                             </div>
                                                         </div>
                                                         <button onClick={() => handleDownloadHallCoursePDF(hall, course)}
-                                                            className="px-4 py-2 bg-white text-[#8B1A1A] text-[10px] font-bold uppercase tracking-wider rounded-lg border border-[#8B1A1A]/30 hover:bg-[#8B1A1A] hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md">
+                                                            className="px-4 py-2 bg-surface text-brand-500 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-brand-500/30 hover:bg-brand-500 hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md">
                                                             ⬇ Download PDF
                                                         </button>
                                                     </div>

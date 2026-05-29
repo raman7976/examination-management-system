@@ -1,0 +1,89 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ *  Design tokens — single source of truth for colour, elevation, motion.
+ *
+ *  Conventions:
+ *  • Colours are stored as space-separated RGB triples (NOT `rgb()` wrappers)
+ *    so Tailwind's `<alpha-value>` placeholder can compose them into final
+ *    `rgb(var(...) / <alpha-value>)` declarations (e.g. `bg-brand-500/30`).
+ *  • Dark theme is activated by adding the `.dark` class to <html>.
+ *  • Token names describe ROLE (`text`, `surface`, `border`), not appearance
+ *    (`slate-900`, `white`) — so dark mode swaps the value, not the call site.
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Institutional maroon — brand anchor ── */
+  --color-brand-50:   254 242 242;
+  --color-brand-100:  254 226 226;
+  --color-brand-500:  139  26  26;   /* the existing #8B1A1A */
+  --color-brand-600:  122  21  24;
+  --color-brand-700:  104  18  22;
+
+  /* ── Neutral surfaces (light) ── */
+  --color-bg:         250 250 249;   /* page background — warm cream */
+  --color-surface:    255 255 255;   /* card */
+  --color-surface-2:  248 248 246;   /* recessed panel / sidebar */
+  --color-border:     229 231 235;   /* slate-200 */
+  --color-border-strong: 209 213 219;/* slate-300 */
+
+  /* ── Text scale (light) ── */
+  --color-text:        17  24  39;   /* slate-900 — body */
+  --color-text-muted:  71  85 105;   /* slate-600 — secondary */
+  --color-text-faint: 148 163 184;   /* slate-400 — labels */
+
+  /* ── Semantic accents (these stay close in both themes) ── */
+  --color-success:  22 101  52;
+  --color-warning: 146  64  14;
+  --color-danger:  153  27  27;
+  --color-info:     30  64 175;
+
+  /* ── Elevation ──
+     Tuned for cream-on-white contrast (page bg is rgb(250,250,249), card bg is
+     white) — a 5% shadow was invisible. Tailwind's own default sm uses ~0.10
+     opacity with a tighter blur; we match that here so cards have visible lift
+     in light mode without feeling heavy. Dark mode shadows stay strong (40%
+     black) because dark backgrounds need the contrast to read elevation. */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 4px 10px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(15, 23, 42, 0.06);
+
+  /* ── Motion ── */
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast:  120ms;
+  --dur-base:  180ms;
+  --dur-slow:  280ms;
+}
+
+.dark {
+  /* Slightly brighter maroon for contrast on dark backgrounds */
+  --color-brand-500: 191  64  64;
+  --color-brand-600: 175  50  50;
+
+  --color-bg:         15  23  42;    /* slate-900 */
+  --color-surface:    30  41  59;    /* slate-800 */
+  --color-surface-2:  22  32  51;    /* between slate-800 and slate-900 */
+  --color-border:     51  65  85;    /* slate-700 */
+  --color-border-strong: 71 85 105;  /* slate-600 */
+
+  --color-text:        241 245 249;  /* slate-100 */
+  --color-text-muted:  148 163 184;  /* slate-400 */
+  --color-text-faint:  100 116 139;  /* slate-500 */
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);
+}
+
+/* ── Body defaults — picked up before any component renders ── */
+html, body {
+  background-color: rgb(var(--color-bg));
+  color: rgb(var(--color-text));
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';   /* Inter's better number forms */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth the colour swap when toggling dark mode */
+html {
+  transition: background-color var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out);
+}

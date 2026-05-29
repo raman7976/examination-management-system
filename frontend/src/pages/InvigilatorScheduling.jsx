@@ -6,13 +6,14 @@ import {
     updateRoleTargets,
     getInvigilatorScheduleList,
     updateInvigilatorOverride,
-    generateInvigilatorSchedule,
+    previewInvigilatorSchedule,
     getInvigilatorSchedule,
     getEligibleInvigilators,
     applyInvigilatorChanges,
     clearInvigilatorSchedule,
 } from '../api/api.js';
 import { usePeriod } from '../context/usePeriod.js';
+import PeriodScopedEmptyState from '../components/PeriodScopedEmptyState.jsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Helpers
@@ -42,10 +43,10 @@ function formatDate(dateStr) {
 }
 
 function BalanceBadge({ balance, isConfigured = true }) {
-    if (!isConfigured) return <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-full px-2 py-0.5">Not set</span>;
-    if (balance === 0) return <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full px-2 py-0.5">On target</span>;
-    if (balance > 0)  return <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 text-[10px] font-bold rounded-full px-2 py-0.5">+{balance} extra</span>;
-    return <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-full px-2 py-0.5">{balance} deficit</span>;
+    if (!isConfigured) return <span className="inline-flex items-center gap-1 bg-surface2 text-textMuted text-[10px] font-bold rounded-full px-2 py-0.5">Not set</span>;
+    if (balance === 0) return <span className="inline-flex items-center gap-1 bg-success/10 text-success text-[10px] font-bold rounded-full px-2 py-0.5">On target</span>;
+    if (balance > 0)  return <span className="inline-flex items-center gap-1 bg-danger/10 text-danger text-[10px] font-bold rounded-full px-2 py-0.5">+{balance} extra</span>;
+    return <span className="inline-flex items-center gap-1 bg-warning/10 text-warning text-[10px] font-bold rounded-full px-2 py-0.5">{balance} deficit</span>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,12 +62,12 @@ function InvigilatorScheduling() {
             <ToastContainer position="top-right" theme="colored" />
 
             <div className="mb-4">
-                <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Invigilator Scheduling</h2>
-                <p className="text-sm text-slate-500 mt-1">Configure duty targets, manage per-invigilator overrides, and assign invigilators to rooms.</p>
+                <h2 className="text-2xl font-bold text-brand-500 tracking-tight">Invigilator Scheduling</h2>
+                <p className="text-sm text-textMuted mt-1">Configure duty targets, manage per-invigilator overrides, and assign invigilators to rooms.</p>
             </div>
 
             {/* Tab Switcher */}
-            <div className="flex gap-1 mb-5 bg-slate-100 rounded-lg p-1 w-fit">
+            <div className="flex gap-1 mb-5 bg-surface2 rounded-lg p-1 w-fit">
                 {[
                     { key: 'targets',      label: 'Role Targets' },
                     { key: 'invigilators', label: 'Invigilators' },
@@ -74,17 +75,17 @@ function InvigilatorScheduling() {
                 ].map(tab => (
                     <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                         className={`px-5 py-2 text-xs font-bold uppercase tracking-wider rounded-md transition-all duration-200 cursor-pointer ${
-                            activeTab === tab.key ? 'bg-[#8B1A1A] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'
+                            activeTab === tab.key ? 'bg-brand-500 text-white shadow-sm' : 'text-textMuted hover:text-text hover:bg-surface/60'
                         }`}>{tab.label}</button>
                 ))}
             </div>
 
             {!periodsLoaded ? (
-                <div className="bg-white rounded-xl border border-slate-200/80 p-12 text-sm text-slate-400 text-center">Loading exam periods…</div>
+                <div className="bg-surface rounded-xl border border-border p-12 text-sm text-textFaint text-center shadow-sm">Loading exam periods…</div>
             ) : periodsError ? (
-                <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-xs text-red-700">⚠ {periodsError}</div>
+                <div className="bg-danger/10 rounded-xl border border-danger/30 p-4 text-xs text-danger">⚠ {periodsError}</div>
             ) : !activePeriod ? (
-                <div className="bg-white rounded-xl border border-slate-200/80 p-12 text-sm text-slate-400 text-center">
+                <div className="bg-surface rounded-xl border border-border p-12 text-sm text-textFaint text-center shadow-sm">
                     No active exam period. Go to <b>Registration</b> tab to create one.
                 </div>
             ) : (
@@ -152,13 +153,13 @@ function RoleTargetsPanel({ periodVersion, activePeriod }) {
     // Loading placeholder — NEVER renders the zero inputs prematurely
     if (!loaded && !loadError) {
         return (
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-8 max-w-2xl text-center">
+            <div className="bg-surface rounded-xl shadow-lg border border-border p-8 max-w-2xl text-center">
                 <div className="flex flex-col items-center gap-3">
-                    <svg className="animate-spin h-7 w-7 text-[#8B1A1A]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-7 w-7 text-brand-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
-                    <span className="text-sm text-slate-500 font-medium">Loading role targets…</span>
+                    <span className="text-sm text-textMuted font-medium">Loading role targets…</span>
                 </div>
             </div>
         );
@@ -167,12 +168,12 @@ function RoleTargetsPanel({ periodVersion, activePeriod }) {
     // Error state — inline retry, no misleading zeros
     if (loadError) {
         return (
-            <div className="bg-white rounded-xl shadow-lg border border-red-200 p-6 max-w-2xl">
-                <h3 className="text-xs font-bold text-red-700 uppercase tracking-wider mb-2">⚠ Couldn't load role targets</h3>
-                <p className="text-sm text-slate-600 mb-3">{loadError}</p>
-                <p className="text-[11px] text-slate-400 mb-4">If this persists, try signing out and signing back in to refresh your session.</p>
+            <div className="bg-surface rounded-xl shadow-lg border border-danger/30 p-6 max-w-2xl">
+                <h3 className="text-xs font-bold text-danger uppercase tracking-wider mb-2">⚠ Couldn't load role targets</h3>
+                <p className="text-sm text-textMuted mb-3">{loadError}</p>
+                <p className="text-[11px] text-textFaint mb-4">If this persists, try signing out and signing back in to refresh your session.</p>
                 <button onClick={load}
-                    className="text-xs font-bold uppercase tracking-wider px-4 py-2 rounded-lg bg-[#8B1A1A] text-white hover:bg-[#721515] cursor-pointer">
+                    className="text-xs font-bold uppercase tracking-wider px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 cursor-pointer">
                     Retry
                 </button>
             </div>
@@ -180,29 +181,29 @@ function RoleTargetsPanel({ periodVersion, activePeriod }) {
     }
 
     return (
-        <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-6 max-w-2xl">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
+        <div className="bg-surface rounded-xl shadow-lg border border-border p-6 max-w-2xl">
+            <h3 className="text-xs font-bold text-text uppercase tracking-wider mb-1">
                 Duty Targets — {activePeriod?.semester_label} · {activePeriod?.exam_type}
             </h3>
-            <p className="text-xs text-slate-500 mb-5">
+            <p className="text-xs text-textMuted mb-5">
                 Targets per role for <b>this exam</b>. Cumulative balance across midterm + endterm is shown on the Invigilators tab.
             </p>
 
             <div className="space-y-4">
                 {ROLES.map(r => (
                     <div key={r.key} className="flex items-center gap-4">
-                        <label className="w-36 text-sm font-medium text-slate-700">{r.label}</label>
+                        <label className="w-36 text-sm font-medium text-text">{r.label}</label>
                         <input
                             type="number"
                             min="0"
                             value={targets[r.key]}
                             onChange={(e) => setTargets(prev => ({ ...prev, [r.key]: e.target.value }))}
-                            className="w-28 px-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800
-                                focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40"
+                            className="w-28 px-3 py-2 text-sm rounded-lg border border-border bg-surface2 text-text
+                                focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40"
                         />
-                        <span className="text-xs text-slate-400">duties / semester</span>
+                        <span className="text-xs text-textFaint">duties / semester</span>
                         {updatedAt[r.key] && (
-                            <span className="text-[10px] text-slate-300 ml-auto">
+                            <span className="text-[10px] text-textFaint ml-auto">
                                 updated {new Date(updatedAt[r.key]).toLocaleString()}
                             </span>
                         )}
@@ -210,10 +211,10 @@ function RoleTargetsPanel({ periodVersion, activePeriod }) {
                 ))}
             </div>
 
-            <div className="mt-6 pt-5 border-t border-slate-100 flex justify-end">
+            <div className="mt-6 pt-5 border-t border-border flex justify-end">
                 <button onClick={save} disabled={saving}
                     className={`px-6 py-2.5 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm transition-all duration-200 ${
-                        saving ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] cursor-pointer'
+                        saving ? 'bg-textFaint cursor-not-allowed' : 'bg-brand-500 hover:bg-brand-600 cursor-pointer'
                     }`}>
                     {saving ? 'Saving…' : 'Save Targets'}
                 </button>
@@ -290,52 +291,52 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
     const siblingType = siblingMeta?.exam_type;
 
     return (
-        <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
+        <div className="bg-surface rounded-xl shadow-lg border border-border overflow-hidden">
             {/* Stats banner */}
-            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-4 text-xs flex-wrap">
-                <span className="text-slate-500">Total invigilators: <b className="text-slate-800">{stats.total}</b></span>
-                <span className="text-slate-300">·</span>
-                <span className="text-slate-500">
-                    <span className="capitalize">{activeType}</span> assigned/target: <b className="text-slate-800">{stats.totalAssignedActive} / {stats.totalTargetActive}</b>
+            <div className="px-5 py-3 border-b border-border flex items-center gap-4 text-xs flex-wrap">
+                <span className="text-textMuted">Total invigilators: <b className="text-text">{stats.total}</b></span>
+                <span className="text-textFaint">·</span>
+                <span className="text-textMuted">
+                    <span className="capitalize">{activeType}</span> assigned/target: <b className="text-text">{stats.totalAssignedActive} / {stats.totalTargetActive}</b>
                 </span>
-                <span className="text-slate-300">·</span>
-                <span className="text-slate-500">
-                    Cumulative (semester): <b className="text-slate-800">{stats.totalAssignedCum} / {stats.totalTargetCum}</b>
+                <span className="text-textFaint">·</span>
+                <span className="text-textMuted">
+                    Cumulative (semester): <b className="text-text">{stats.totalAssignedCum} / {stats.totalTargetCum}</b>
                 </span>
-                <span className="text-slate-300">·</span>
-                <span className="text-amber-700">{stats.deficit} in deficit</span>
-                <span className="text-slate-300">·</span>
-                <span className="text-red-700">{stats.extra} with extra duties</span>
+                <span className="text-textFaint">·</span>
+                <span className="text-warning">{stats.deficit} in deficit</span>
+                <span className="text-textFaint">·</span>
+                <span className="text-danger">{stats.extra} with extra duties</span>
             </div>
 
             {/* Search */}
-            <div className="px-5 py-3 border-b border-slate-100">
+            <div className="px-5 py-3 border-b border-border">
                 <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search by name, email, employee ID or department…"
-                    className="w-full px-4 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder-slate-400
-                        focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40"
+                    className="w-full px-4 py-2 text-sm rounded-lg border border-border bg-surface2 text-text placeholder-slate-400
+                        focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40"
                 />
             </div>
 
             {/* Table */}
             <div className="max-h-[560px] overflow-y-auto">
                 {loading ? (
-                    <div className="p-10 text-sm text-slate-400 text-center">Loading…</div>
+                    <div className="p-10 text-sm text-textFaint text-center">Loading…</div>
                 ) : list.length === 0 ? (
-                    <div className="p-10 text-sm text-slate-400 text-center">No invigilators found.</div>
+                    <div className="p-10 text-sm text-textFaint text-center">No invigilators found.</div>
                 ) : (
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-slate-50 z-[5]">
-                            <tr className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <thead className="sticky top-0 bg-surface2 z-[5]">
+                            <tr className="text-[11px] font-bold text-textMuted uppercase tracking-wider">
                                 <th className="px-4 py-2.5 text-left">Name</th>
                                 <th className="px-3 py-2.5 text-left">Role</th>
                                 <th className="px-3 py-2.5 text-right">Default ({activeType})</th>
                                 <th className="px-3 py-2.5 text-right">Override ({activeType})</th>
-                                <th className={`px-3 py-2.5 text-right ${activeType === 'midterm' ? 'border-l-2 border-[#8B1A1A]/40 bg-[#8B1A1A]/5' : ''}`}>Midterm A/T</th>
-                                <th className={`px-3 py-2.5 text-right ${activeType === 'endterm' ? 'border-l-2 border-[#8B1A1A]/40 bg-[#8B1A1A]/5' : ''}`}>Endterm A/T</th>
+                                <th className={`px-3 py-2.5 text-right ${activeType === 'midterm' ? 'border-l-2 border-brand-500/40 bg-brand-500/5' : ''}`}>Midterm A/T</th>
+                                <th className={`px-3 py-2.5 text-right ${activeType === 'endterm' ? 'border-l-2 border-brand-500/40 bg-brand-500/5' : ''}`}>Endterm A/T</th>
                                 <th className="px-3 py-2.5 text-right">Cumulative A/T</th>
                                 <th className="px-3 py-2.5 text-center">Balance</th>
                                 <th className="px-3 py-2.5 text-right pr-4">Actions</th>
@@ -350,13 +351,13 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
                                 const endA = activeType === 'endterm' ? inv.assigned_count : (siblingType === 'endterm' ? inv.sibling_assigned : 0);
                                 const endT = activeType === 'endterm' ? inv.effective_target : (siblingType === 'endterm' ? inv.sibling_target : 0);
                                 return (
-                                    <tr key={inv.user_id} className="hover:bg-slate-50/50">
+                                    <tr key={inv.user_id} className="hover:bg-surface2">
                                         <td className="px-4 py-2.5">
-                                            <div className="font-medium text-slate-800 text-[13px]">{inv.full_name}</div>
-                                            <div className="text-[10px] text-slate-400">{inv.employee_id || '—'} · {inv.department || '—'}</div>
+                                            <div className="font-medium text-text text-[13px]">{inv.full_name}</div>
+                                            <div className="text-[10px] text-textFaint">{inv.employee_id || '—'} · {inv.department || '—'}</div>
                                         </td>
-                                        <td className="px-3 py-2.5 text-xs text-slate-500">{ROLE_LABEL[inv.role] || inv.role}</td>
-                                        <td className="px-3 py-2.5 text-right text-xs text-slate-500">{inv.role_target ?? 0}</td>
+                                        <td className="px-3 py-2.5 text-xs text-textMuted">{ROLE_LABEL[inv.role] || inv.role}</td>
+                                        <td className="px-3 py-2.5 text-right text-xs text-textMuted">{inv.role_target ?? 0}</td>
                                         <td className="px-3 py-2.5 text-right">
                                             {isEditing ? (
                                                 <input
@@ -370,29 +371,29 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
                                                         if (e.key === 'Enter') saveOverride(inv.user_id, e.target.value);
                                                         if (e.key === 'Escape') setEditing(prev => { const n = { ...prev }; delete n[inv.user_id]; return n; });
                                                     }}
-                                                    className="w-20 px-2 py-1 text-xs rounded border border-[#8B1A1A]/40 focus:outline-none focus:ring-1 focus:ring-[#8B1A1A]/30 text-right"
+                                                    className="w-20 px-2 py-1 text-xs rounded border border-brand-500/40 focus:outline-none focus:ring-1 focus:ring-brand-500/30 text-right"
                                                 />
                                             ) : (
                                                 <button onClick={() => setEditing(prev => ({ ...prev, [inv.user_id]: inv.override_target ?? '' }))}
-                                                    className={`text-xs font-mono px-2 py-1 rounded cursor-pointer ${inv.override_target != null ? 'bg-[#8B1A1A]/10 text-[#8B1A1A] font-bold' : 'text-slate-400 hover:bg-slate-100'}`}>
+                                                    className={`text-xs font-mono px-2 py-1 rounded cursor-pointer ${inv.override_target != null ? 'bg-brand-500/10 text-brand-500 font-bold' : 'text-textFaint hover:bg-surface2'}`}>
                                                     {inv.override_target ?? '—'}
                                                 </button>
                                             )}
                                         </td>
-                                        <td className={`px-3 py-2.5 text-right text-xs ${activeType === 'midterm' ? 'border-l-2 border-[#8B1A1A]/40 bg-[#8B1A1A]/5 font-bold' : 'text-slate-500'}`}>
-                                            {midA}<span className="text-slate-300"> / {midT}</span>
+                                        <td className={`px-3 py-2.5 text-right text-xs ${activeType === 'midterm' ? 'border-l-2 border-brand-500/40 bg-brand-500/5 font-bold' : 'text-textMuted'}`}>
+                                            {midA}<span className="text-textFaint"> / {midT}</span>
                                         </td>
-                                        <td className={`px-3 py-2.5 text-right text-xs ${activeType === 'endterm' ? 'border-l-2 border-[#8B1A1A]/40 bg-[#8B1A1A]/5 font-bold' : 'text-slate-500'}`}>
-                                            {endA}<span className="text-slate-300"> / {endT}</span>
+                                        <td className={`px-3 py-2.5 text-right text-xs ${activeType === 'endterm' ? 'border-l-2 border-brand-500/40 bg-brand-500/5 font-bold' : 'text-textMuted'}`}>
+                                            {endA}<span className="text-textFaint"> / {endT}</span>
                                         </td>
-                                        <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-700">
-                                            {inv.cumulative_assigned}<span className="text-slate-300"> / {inv.cumulative_target}</span>
+                                        <td className="px-3 py-2.5 text-right text-xs font-semibold text-text">
+                                            {inv.cumulative_assigned}<span className="text-textFaint"> / {inv.cumulative_target}</span>
                                         </td>
                                         <td className="px-3 py-2.5 text-center"><BalanceBadge balance={inv.balance} isConfigured={inv.is_configured ?? (inv.cumulative_target > 0)} /></td>
                                         <td className="px-3 py-2.5 text-right pr-4">
                                             {inv.override_target != null && (
                                                 <button onClick={() => resetOverride(inv.user_id)}
-                                                    className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B1A1A] border border-slate-200 hover:border-[#8B1A1A] px-2 py-1 rounded cursor-pointer">
+                                                    className="text-[10px] font-bold uppercase tracking-wider text-textMuted hover:text-brand-500 border border-border hover:border-brand-500 px-2 py-1 rounded cursor-pointer">
                                                     Reset
                                                 </button>
                                             )}
@@ -426,7 +427,30 @@ function SchedulePanel({ periodVersion, activePeriod }) {
     // reassigns: { [assignment_id]: { new_user_id, user_data } }
     // removes:   Set<assignment_id>
     // adds:      [{ tempId, slot_id, classroom_id, user_id, user_data }]
-    const [pending, setPending] = useState({ reassigns: {}, removes: new Set(), adds: [] });
+    //
+    // Persisted to sessionStorage keyed by period id so drafts survive tab
+    // navigation (Invigilator Scheduling → Seating Arrangement → back), page
+    // refresh, and accidental component unmounts. Cleared on Save / Discard /
+    // explicit Clear Schedule.
+    const draftKey = activePeriod ? `inv_sched_draft_p${activePeriod.id}` : null;
+
+    const initialPending = (() => {
+        if (!draftKey) return { reassigns: {}, removes: new Set(), adds: [] };
+        try {
+            const raw = sessionStorage.getItem(draftKey);
+            if (!raw) return { reassigns: {}, removes: new Set(), adds: [] };
+            const parsed = JSON.parse(raw);
+            return {
+                reassigns: parsed.reassigns || {},
+                removes:   new Set(parsed.removes || []),
+                adds:      Array.isArray(parsed.adds) ? parsed.adds : [],
+            };
+        } catch {
+            return { reassigns: {}, removes: new Set(), adds: [] };
+        }
+    })();
+
+    const [pending, setPending] = useState(initialPending);
     const [saving, setSaving] = useState(false);
     const [clearing, setClearing] = useState(false);
 
@@ -434,6 +458,50 @@ function SchedulePanel({ periodVersion, activePeriod }) {
         Object.keys(pending.reassigns).length + pending.removes.size + pending.adds.length;
 
     const resetPending = () => setPending({ reassigns: {}, removes: new Set(), adds: [] });
+
+    // Persist drafts to sessionStorage on every change (Set→Array for JSON).
+    useEffect(() => {
+        if (!draftKey) return;
+        try {
+            if (pendingCount === 0) {
+                sessionStorage.removeItem(draftKey);
+            } else {
+                sessionStorage.setItem(draftKey, JSON.stringify({
+                    reassigns: pending.reassigns,
+                    removes:   Array.from(pending.removes),
+                    adds:      pending.adds,
+                }));
+            }
+        } catch { /* sessionStorage may be full or disabled — non-fatal */ }
+    }, [draftKey, pending, pendingCount]);
+
+    // When activePeriod changes WHILE this component stays mounted (i.e. the
+    // user switched periods from Registration but we're still here), rehydrate
+    // the draft for the new period from its sessionStorage slot.
+    const prevDraftKey = React.useRef(draftKey);
+    useEffect(() => {
+        if (prevDraftKey.current === draftKey) return;
+        prevDraftKey.current = draftKey;
+        if (!draftKey) {
+            setPending({ reassigns: {}, removes: new Set(), adds: [] });
+            return;
+        }
+        try {
+            const raw = sessionStorage.getItem(draftKey);
+            if (!raw) {
+                setPending({ reassigns: {}, removes: new Set(), adds: [] });
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            setPending({
+                reassigns: parsed.reassigns || {},
+                removes:   new Set(parsed.removes || []),
+                adds:      Array.isArray(parsed.adds) ? parsed.adds : [],
+            });
+        } catch {
+            setPending({ reassigns: {}, removes: new Set(), adds: [] });
+        }
+    }, [draftKey]);
 
     // C1: register a dirty check so PeriodContext can prompt before switching.
     // The check is recomputed via a ref so we don't re-register on every keystroke.
@@ -463,21 +531,59 @@ function SchedulePanel({ periodVersion, activePeriod }) {
         }
     }, []);
 
-    useEffect(() => { load(); resetPending(); /* refetch & drop drafts on period switch */ }, [load, periodVersion]);
+    // Refetch the schedule whenever the period changes. We DO NOT call
+    // resetPending() here because:
+    //   • drafts are now persisted in sessionStorage keyed by period id;
+    //   • switching periods is guarded by the dirty-check (PeriodContext);
+    //   • when the user returns to the prior period, the draft for it is
+    //     restored from sessionStorage automatically via initialPending.
+    useEffect(() => { load(); }, [load, periodVersion]);
 
     const handleGenerate = async () => {
         const label = activePeriod ? `${activePeriod.semester_label} — ${activePeriod.exam_type}` : 'the active period';
-        let msg = `Generate a fresh schedule for ${label}? This wipes existing assignments for THIS period only (other periods untouched).`;
-        if (pendingCount > 0) msg += `\n\n⚠ You have ${pendingCount} unsaved change(s). They will be lost.`;
+        let msg = `Generate a fresh draft schedule for ${label}?\n\nThis stages a complete replacement in memory — nothing is saved to the database until you click Save Changes.`;
+        if (pendingCount > 0) msg += `\n\n⚠ You already have ${pendingCount} unsaved change(s). They will be discarded.`;
         if (!window.confirm(msg)) return;
         setGenerating(true);
         try {
-            // S3: send period_id explicitly so a flip mid-request can't misroute
-            const res = await generateInvigilatorSchedule({ period_id: activePeriod?.id });
-            toast.success(res.data.message, { autoClose: 3000 });
+            const res = await previewInvigilatorSchedule({ period_id: activePeriod?.id });
+            const proposals = res.data?.assignments || [];
+
+            // Stage the proposals as a draft on top of the current schedule:
+            //   • every CURRENT assignment for this period → pending.removes
+            //   • every PROPOSED assignment → pending.adds (with a temp id)
+            // When Save Changes is clicked, applyChanges runs removes → adds in
+            // one transaction, exactly like the old "generate & save" did.
+            const existingIds = new Set();
+            for (const slot of schedule)
+                for (const room of slot.rooms)
+                    for (const inv of room.invigilators)
+                        existingIds.add(inv.assignment_id);
+
+            let tempSeed = -Date.now();
+            const newAdds = proposals.map(p => ({
+                tempId: tempSeed--,
+                slot_id:      p.slot_id,
+                classroom_id: p.classroom_id,
+                user_id:      p.user_id,
+                // CRITICAL: carry is_course_instructor through so the ★ marker
+                // and Phase-A vs Phase-B colouring survive Generate Draft.
+                is_course_instructor: !!p.is_course_instructor,
+                user_data: {
+                    user_id:     p.user_id,
+                    full_name:   p.full_name,
+                    role:        p.role,
+                    employee_id: p.employee_id,
+                },
+            }));
+
+            setPending({
+                reassigns: {},
+                removes: existingIds,
+                adds:    newAdds,
+            });
             setWarnings(res.data.warnings || []);
-            resetPending();
-            load();
+            toast.success(res.data.message || 'Draft generated. Review and click Save Changes when ready.', { autoClose: 3500 });
         } catch (err) {
             toast.error(err.response?.data?.message || 'Generate failed.');
         } finally {
@@ -619,6 +725,12 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                             full_name:            reassigned.user_data.full_name,
                             role:                 reassigned.user_data.role,
                             employee_id:          reassigned.user_data.employee_id,
+                            // We can't know client-side whether the NEW user
+                            // teaches a course in this room without an extra
+                            // round-trip. The backend recomputes the real flag
+                            // on Save (isInstructorForRoom in applyChanges /
+                            // reassignAssignment). For the draft preview, fall
+                            // back to false — the ★ will reappear after Save.
                             is_course_instructor: false,
                             _status: 'reassigned',
                         };
@@ -634,7 +746,9 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                         full_name:            a.user_data.full_name,
                         role:                 a.user_data.role,
                         employee_id:          a.user_data.employee_id,
-                        is_course_instructor: false,
+                        // Preserve the algorithm's instructor flag so the ★
+                        // shows up on staged Phase-A placements.
+                        is_course_instructor: !!a.is_course_instructor,
                         _status:              'added',
                     }));
                 return { ...room, invigilators: [...baseInvigilators, ...addedHere] };
@@ -683,28 +797,28 @@ function SchedulePanel({ periodVersion, activePeriod }) {
         <div>
             {/* Action bar */}
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-                <div className="text-xs text-slate-500">
-                    Schedule for <b className="text-[#8B1A1A]">{activePeriod?.semester_label} — {activePeriod?.exam_type}</b>
+                <div className="text-xs text-textMuted">
+                    Schedule for <b className="text-brand-500">{activePeriod?.semester_label} — {activePeriod?.exam_type}</b>
                     {' · '}
                     {schedule.length === 0 ? 'no schedule yet, click Generate' : `${schedule.length} slot(s) loaded`}
                 </div>
                 <div className="flex gap-2">
                     <button onClick={load} disabled={loading}
-                        className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer">
+                        className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border border-border text-textMuted hover:bg-surface2 cursor-pointer">
                         Refresh
                     </button>
                     <button onClick={handleClear} disabled={clearing || schedule.length === 0}
                         className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border transition-all duration-200 ${
                             clearing || schedule.length === 0
-                                ? 'border-slate-200 text-slate-300 cursor-not-allowed'
-                                : 'border-red-300 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 cursor-pointer'
+                                ? 'border-border text-textFaint cursor-not-allowed'
+                                : 'border-danger/40 text-danger hover:bg-danger hover:text-white hover:border-danger/50 cursor-pointer'
                         }`}
                         title="Permanently delete the entire saved schedule">
                         {clearing ? 'Clearing…' : 'Clear Schedule'}
                     </button>
                     <button onClick={handleGenerate} disabled={generating}
                         className={`px-5 py-2 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm transition-all duration-200 ${
-                            generating ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] cursor-pointer'
+                            generating ? 'bg-textFaint cursor-not-allowed' : 'bg-brand-500 hover:bg-brand-600 cursor-pointer'
                         }`}>
                         {generating ? 'Generating…' : 'Generate Draft'}
                     </button>
@@ -713,18 +827,18 @@ function SchedulePanel({ periodVersion, activePeriod }) {
 
             {/* Invigilator search */}
             {schedule.length > 0 && (
-                <div className="mb-4 bg-white rounded-xl border border-slate-200/80 px-4 py-3">
+                <div className="mb-4 bg-surface rounded-xl border border-border px-4 py-3 shadow-sm">
                     <div className="relative">
-                        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textFaint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                         </svg>
                         <input type="text" value={invSearch} onChange={(e) => setInvSearch(e.target.value)}
                             placeholder="Search for an invigilator by name or employee ID…"
-                            className="w-full pl-10 pr-9 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder-slate-400
-                                focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40" />
+                            className="w-full pl-10 pr-9 py-2 text-sm rounded-lg border border-border bg-surface2 text-text placeholder-slate-400
+                                focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40" />
                         {invSearch && (
                             <button onClick={() => setInvSearch('')}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textFaint hover:text-textMuted cursor-pointer">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
@@ -732,10 +846,10 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                         )}
                     </div>
                     {invSearch && (
-                        <div className="mt-2 text-[11px] text-slate-500">
+                        <div className="mt-2 text-[11px] text-textMuted">
                             {matchCount === 0
-                                ? <span className="text-amber-700">No matches.</span>
-                                : <span><b className="text-[#8B1A1A]">{matchCount}</b> assignment{matchCount !== 1 ? 's' : ''} across <b className="text-[#8B1A1A]">{filteredSchedule.length}</b> slot{filteredSchedule.length !== 1 ? 's' : ''}.</span>
+                                ? <span className="text-warning">No matches.</span>
+                                : <span><b className="text-brand-500">{matchCount}</b> assignment{matchCount !== 1 ? 's' : ''} across <b className="text-brand-500">{filteredSchedule.length}</b> slot{filteredSchedule.length !== 1 ? 's' : ''}.</span>
                             }
                         </div>
                     )}
@@ -745,12 +859,12 @@ function SchedulePanel({ periodVersion, activePeriod }) {
             {/* Unsaved changes banner — sticky at top */}
             {pendingCount > 0 && (
                 <div className="sticky top-0 z-30 mb-4 -mx-1 px-4 py-3 rounded-lg shadow-md flex items-center justify-between flex-wrap gap-2"
-                    style={{ background: 'linear-gradient(90deg, #fef3c7, #fde68a)' }}>
+                    className="bg-gradient-to-r from-warning/15 to-warning/25">
                     <div className="flex items-center gap-3 text-xs">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-600 text-white font-bold text-[11px]">{pendingCount}</span>
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-warning text-white font-bold text-[11px]">{pendingCount}</span>
                         <div>
-                            <div className="font-bold text-amber-900">Unsaved changes</div>
-                            <div className="text-[11px] text-amber-800">
+                            <div className="font-bold text-warning">Unsaved changes</div>
+                            <div className="text-[11px] text-warning">
                                 {pending.adds.length > 0       && <span className="mr-2">+{pending.adds.length} added</span>}
                                 {Object.keys(pending.reassigns).length > 0 && <span className="mr-2">↺ {Object.keys(pending.reassigns).length} reassigned</span>}
                                 {pending.removes.size > 0      && <span>− {pending.removes.size} removed</span>}
@@ -759,12 +873,12 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                     </div>
                     <div className="flex gap-2">
                         <button onClick={handleDiscard} disabled={saving}
-                            className="px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded border border-amber-700 text-amber-800 hover:bg-amber-200 disabled:opacity-50 cursor-pointer">
+                            className="px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded border border-warning/50 text-warning hover:bg-warning/30 disabled:opacity-50 cursor-pointer">
                             Discard
                         </button>
                         <button onClick={handleSave} disabled={saving}
                             className={`px-5 py-1.5 text-[11px] font-bold uppercase tracking-widest rounded text-white shadow-sm ${
-                                saving ? 'bg-amber-400 cursor-not-allowed' : 'bg-amber-700 hover:bg-amber-800 cursor-pointer'
+                                saving ? 'bg-warning/30 cursor-not-allowed' : 'bg-warning hover:bg-warning cursor-pointer'
                             }`}>
                             {saving ? 'Saving…' : 'Save Changes'}
                         </button>
@@ -774,9 +888,9 @@ function SchedulePanel({ periodVersion, activePeriod }) {
 
             {/* Warnings */}
             {warnings.length > 0 && (
-                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                    <div className="text-xs font-bold text-amber-800 mb-1">⚠ Warnings ({warnings.length})</div>
-                    <ul className="text-[11px] text-amber-700 list-disc list-inside space-y-0.5">
+                <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                    <div className="text-xs font-bold text-warning mb-1">⚠ Warnings ({warnings.length})</div>
+                    <ul className="text-[11px] text-warning list-disc list-inside space-y-0.5">
                         {warnings.slice(0, 10).map((w, i) => <li key={i}>{w}</li>)}
                         {warnings.length > 10 && <li>… and {warnings.length - 10} more.</li>}
                     </ul>
@@ -785,13 +899,15 @@ function SchedulePanel({ periodVersion, activePeriod }) {
 
             {/* Schedule */}
             {loading ? (
-                <div className="bg-white rounded-xl border border-slate-200/80 p-12 text-sm text-slate-400 text-center">Loading…</div>
+                <div className="bg-surface rounded-xl border border-border p-12 text-sm text-textFaint text-center shadow-sm">Loading…</div>
             ) : schedule.length === 0 ? (
-                <div className="bg-white rounded-xl border border-slate-200/80 p-12 text-sm text-slate-400 text-center">
-                    Click <b>Generate Draft</b> to build the invigilator schedule. Requires at least one slot with a saved seating plan.
-                </div>
+                <PeriodScopedEmptyState noun="invigilator assignments">
+                    Click <b className="text-text">Generate Draft</b> to build the schedule for this period
+                    (requires at least one slot with a saved seating plan). Or switch to another period
+                    that already has a saved schedule.
+                </PeriodScopedEmptyState>
             ) : filteredSchedule.length === 0 ? (
-                <div className="bg-white rounded-xl border border-slate-200/80 p-12 text-sm text-slate-400 text-center">
+                <div className="bg-surface rounded-xl border border-border p-12 text-sm text-textFaint text-center shadow-sm">
                     No invigilators match <b>"{invSearch}"</b>.
                 </div>
             ) : (
@@ -802,32 +918,32 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                         const isOpen = lcQuery ? true : expandedSlots[slot.slot_id] !== false;
                         const totals = totalsBySlot[idx];
                         return (
-                            <div key={slot.slot_id} className="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
-                                <div className="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50/60"
+                            <div key={slot.slot_id} className="bg-surface rounded-xl shadow-sm border border-border overflow-hidden">
+                                <div className="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-surface2/60"
                                     onClick={() => setExpandedSlots(prev => ({ ...prev, [slot.slot_id]: !isOpen }))}>
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isOpen ? 'bg-[#8B1A1A] text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isOpen ? 'bg-brand-500 text-white' : 'bg-surface2 text-textFaint'}`}>
                                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d={isOpen ? 'M19 9l-7 7-7-7' : 'M9 5l7 7-7 7'} />
                                             </svg>
                                         </div>
                                         <div>
-                                            <div className="text-sm font-bold text-slate-800">{slot.exam_day}, {formatDate(slot.exam_date)}</div>
-                                            <div className="text-[11px] text-slate-400">{formatTime(slot.start_time)} – {formatTime(slot.end_time)} · {slot.rooms.length} room(s)</div>
+                                            <div className="text-sm font-bold text-text">{slot.exam_day}, {formatDate(slot.exam_date)}</div>
+                                            <div className="text-[11px] text-textFaint">{formatTime(slot.start_time)} – {formatTime(slot.end_time)} · {slot.rooms.length} room(s)</div>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-[10px] font-bold px-2 py-1 rounded ${totals.total_assigned >= totals.total_required ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                        <span className={`text-[10px] font-bold px-2 py-1 rounded ${totals.total_assigned >= totals.total_required ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
                                             {totals.total_assigned} / {totals.total_required} assigned
                                         </span>
                                     </div>
                                 </div>
 
                                 {isOpen && (
-                                    <div className="border-t border-slate-100">
+                                    <div className="border-t border-border">
                                         <table className="w-full text-sm">
-                                            <thead className="bg-slate-50/60">
-                                                <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <thead className="bg-surface2/60">
+                                                <tr className="text-[10px] font-bold text-textMuted uppercase tracking-wider">
                                                     <th className="px-5 py-2 text-left">Room</th>
                                                     <th className="px-3 py-2 text-left">Courses</th>
                                                     <th className="px-3 py-2 text-right">Students</th>
@@ -841,58 +957,72 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                                                     const liveCount = room.invigilators.filter(i => i._status !== 'removed').length;
                                                     const ok = liveCount >= room.required;
                                                     return (
-                                                        <tr key={room.classroom_id} className="hover:bg-slate-50/40">
-                                                            <td className="px-5 py-2.5 font-mono text-xs font-bold text-slate-700">{room.room_name}</td>
-                                                            <td className="px-3 py-2.5 text-[11px] text-slate-500 truncate max-w-[180px]">{room.course_codes}</td>
-                                                            <td className="px-3 py-2.5 text-right text-xs text-slate-600">{room.students}</td>
-                                                            <td className={`px-3 py-2.5 text-right text-xs font-bold ${ok ? 'text-emerald-700' : 'text-amber-700'}`}>{room.required}</td>
+                                                        <tr key={room.classroom_id} className="hover:bg-surface2/40">
+                                                            <td className="px-5 py-2.5 font-mono text-xs font-bold text-text">{room.room_name}</td>
+                                                            <td className="px-3 py-2.5 text-[11px] text-textMuted truncate max-w-[180px]">{room.course_codes}</td>
+                                                            <td className="px-3 py-2.5 text-right text-xs text-textMuted">{room.students}</td>
+                                                            <td className={`px-3 py-2.5 text-right text-xs font-bold ${ok ? 'text-success' : 'text-warning'}`}>{room.required}</td>
                                                             <td className="px-3 py-2.5">
                                                                 <div className="flex flex-wrap gap-1.5">
-                                                                    {room.invigilators.length === 0 && <span className="text-[10px] text-slate-300 italic">unassigned</span>}
+                                                                    {room.invigilators.length === 0 && <span className="text-[10px] text-textFaint italic">unassigned</span>}
                                                                     {room.invigilators.map(inv => {
-                                                                        const isMatch    = lcQuery && matchesQuery(inv, lcQuery);
-                                                                        const isAdded    = inv._status === 'added';
-                                                                        const isReassign = inv._status === 'reassigned';
-                                                                        const isRemoved  = inv._status === 'removed';
+                                                                        const isMatch      = lcQuery && matchesQuery(inv, lcQuery);
+                                                                        const isAdded      = inv._status === 'added';
+                                                                        const isReassign   = inv._status === 'reassigned';
+                                                                        const isRemoved    = inv._status === 'removed';
+                                                                        const isInstructor = !!inv.is_course_instructor;
 
-                                                                        // Click behaviour:
-                                                                        //  - Removed chips → undo the remove (cancel staged delete)
-                                                                        //  - Others       → open swap/edit modal
                                                                         const onClickChip = isRemoved
                                                                             ? () => undoRemove(inv.assignment_id)
                                                                             : () => setSwapModal({ slotId: slot.slot_id, room, assignment: inv });
 
+                                                                        // Styling precedence:
+                                                                        //   removed (strikethrough) > instructor (maroon ★) > added (emerald) > reassigned (amber) > match > default.
+                                                                        // Instructor styling DOMINATES added/reassigned, but we layer a coloured
+                                                                        // ring around the chip so the user can still see it's a draft change.
                                                                         let cls;
-                                                                        if (isRemoved)
-                                                                            cls = 'bg-slate-50 text-slate-400 border border-dashed border-slate-300 line-through hover:bg-red-50 hover:text-red-600 hover:border-red-300';
-                                                                        else if (isAdded)
-                                                                            cls = 'bg-emerald-50 text-emerald-800 border border-emerald-400 hover:bg-emerald-100';
-                                                                        else if (isReassign)
-                                                                            cls = 'bg-amber-50 text-amber-900 border border-amber-400 hover:bg-amber-100';
-                                                                        else if (isMatch)
-                                                                            cls = 'bg-amber-100 text-amber-900 border border-amber-400 ring-2 ring-amber-300/60';
-                                                                        else if (inv.is_course_instructor)
-                                                                            cls = 'bg-[#8B1A1A]/10 text-[#8B1A1A] border border-[#8B1A1A]/30 hover:bg-[#8B1A1A]/20';
-                                                                        else
-                                                                            cls = 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-[#8B1A1A]/10 hover:border-[#8B1A1A]/30 hover:text-[#8B1A1A]';
+                                                                        if (isRemoved) {
+                                                                            cls = 'bg-surface2 text-textFaint border border-dashed border-borderStrong line-through hover:bg-danger/10 hover:text-danger hover:border-danger/40';
+                                                                        } else if (isInstructor) {
+                                                                            const baseCi = 'bg-brand-500/10 text-brand-500';
+                                                                            const draftRing = isAdded
+                                                                                ? ' border-2 border-success/30 ring-2 ring-emerald-200/60'
+                                                                                : isReassign
+                                                                                    ? ' border-2 border-warning/30 ring-2 ring-amber-200/60'
+                                                                                    : ' border border-brand-500/30 hover:bg-brand-500/20';
+                                                                            cls = baseCi + draftRing;
+                                                                        } else if (isAdded) {
+                                                                            cls = 'bg-success/10 text-success border border-success/50 hover:bg-success/15';
+                                                                        } else if (isReassign) {
+                                                                            cls = 'bg-warning/10 text-warning border border-warning/50 hover:bg-warning/15';
+                                                                        } else if (isMatch) {
+                                                                            cls = 'bg-warning/15 text-warning border border-warning/50 ring-2 ring-amber-300/60';
+                                                                        } else {
+                                                                            cls = 'bg-surface2 text-text border border-border hover:bg-brand-500/10 hover:border-brand-500/30 hover:text-brand-500';
+                                                                        }
 
                                                                         const title = isRemoved
                                                                             ? 'Pending removal — click to undo'
-                                                                            : isAdded
-                                                                                ? 'Pending add — click to edit'
-                                                                                : isReassign
-                                                                                    ? 'Pending reassignment — click to edit'
-                                                                                    : inv.is_course_instructor
-                                                                                        ? 'Course instructor — click to reassign or remove'
-                                                                                        : 'Click to reassign or remove';
+                                                                            : isInstructor && isAdded
+                                                                                ? '★ Course instructor (pending add) — click to edit'
+                                                                                : isInstructor && isReassign
+                                                                                    ? '★ Course instructor (pending reassign) — click to edit'
+                                                                                    : isInstructor
+                                                                                        ? '★ Course instructor — click to reassign or remove'
+                                                                                        : isAdded
+                                                                                            ? 'Pending add — click to edit'
+                                                                                            : isReassign
+                                                                                                ? 'Pending reassignment — click to edit'
+                                                                                                : 'Click to reassign or remove';
 
                                                                         return (
                                                                             <button key={inv.assignment_id} onClick={onClickChip}
                                                                                 className={`group inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all cursor-pointer ${cls}`}
                                                                                 title={title}>
-                                                                                {isAdded    && <span className="text-[8px] font-bold">+</span>}
-                                                                                {isReassign && <span className="text-[8px] font-bold">↺</span>}
-                                                                                {!isAdded && !isReassign && !isRemoved && inv.is_course_instructor && <span className="text-[8px]">★</span>}
+                                                                                {/* ★ ALWAYS shows for instructor placements, regardless of draft state */}
+                                                                                {isInstructor && !isRemoved && <span className="text-[10px]">★</span>}
+                                                                                {!isInstructor && isAdded    && <span className="text-[8px] font-bold">+</span>}
+                                                                                {!isInstructor && isReassign && <span className="text-[8px] font-bold">↺</span>}
                                                                                 {inv.full_name}
                                                                                 <span className="text-[8px] opacity-50">({ROLE_LABEL[inv.role]})</span>
                                                                             </button>
@@ -902,7 +1032,7 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                                                             </td>
                                                             <td className="px-3 py-2.5 text-right pr-5">
                                                                 <button onClick={() => setSwapModal({ slotId: slot.slot_id, room })}
-                                                                    className="text-[10px] font-bold uppercase tracking-wider text-[#8B1A1A] border border-[#8B1A1A]/30 hover:bg-[#8B1A1A] hover:text-white px-2.5 py-1 rounded cursor-pointer">
+                                                                    className="text-[10px] font-bold uppercase tracking-wider text-brand-500 border border-brand-500/30 hover:bg-brand-500 hover:text-white px-2.5 py-1 rounded cursor-pointer">
                                                                     + Add
                                                                 </button>
                                                             </td>
@@ -999,34 +1129,34 @@ function AssignmentModal({ slotId, room, assignment, onPick, onRemove, onClose }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+            <div className="bg-surface rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                     <div>
-                        <h3 className="text-sm font-bold text-slate-800">
+                        <h3 className="text-sm font-bold text-text">
                             {isSwap ? `Replace ${assignment.full_name}` : 'Add Invigilator'}
                         </h3>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
+                        <p className="text-[11px] text-textFaint mt-0.5">
                             Room <b>{room.room_name}</b> · {room.students} students · needs {room.required}
-                            {isSwap && assignment.is_course_instructor && <span className="ml-2 text-[#8B1A1A] font-semibold">★ course instructor</span>}
+                            {isSwap && assignment.is_course_instructor && <span className="ml-2 text-brand-500 font-semibold">★ course instructor</span>}
                         </p>
                     </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <button onClick={onClose} className="text-textFaint hover:text-textMuted cursor-pointer">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
 
-                <div className="px-5 py-3 border-b border-slate-100 space-y-2">
+                <div className="px-5 py-3 border-b border-border space-y-2">
                     <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus
                         placeholder="Search by name, employee ID or department…"
-                        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20" />
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface2 focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
 
                     {/* Role filter pills */}
-                    <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+                    <div className="flex gap-1 bg-surface2 rounded-lg p-1 w-fit">
                         {ROLE_FILTERS.map(rf => (
                             <button key={rf.key} onClick={() => setRoleFilter(rf.key)}
                                 className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all duration-200 cursor-pointer ${
-                                    roleFilter === rf.key ? 'bg-[#8B1A1A] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'
+                                    roleFilter === rf.key ? 'bg-brand-500 text-white shadow-sm' : 'text-textMuted hover:text-text hover:bg-surface/60'
                                 }`}>{rf.label}</button>
                         ))}
                     </div>
@@ -1034,13 +1164,13 @@ function AssignmentModal({ slotId, room, assignment, onPick, onRemove, onClose }
 
                 <div className="flex-1 overflow-y-auto">
                     {loading ? (
-                        <div className="p-10 text-sm text-slate-400 text-center">Loading…</div>
+                        <div className="p-10 text-sm text-textFaint text-center">Loading…</div>
                     ) : filtered.length === 0 ? (
-                        <div className="p-10 text-sm text-slate-400 text-center">No eligible invigilators match.</div>
+                        <div className="p-10 text-sm text-textFaint text-center">No eligible invigilators match.</div>
                     ) : (
                         <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-slate-50">
-                                <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            <thead className="sticky top-0 bg-surface2">
+                                <tr className="text-[10px] font-bold text-textMuted uppercase tracking-wider">
                                     <th className="px-4 py-2 text-left">Name</th>
                                     <th className="px-3 py-2 text-left">Role</th>
                                     <th className="px-3 py-2 text-right">Assigned / Target</th>
@@ -1052,20 +1182,20 @@ function AssignmentModal({ slotId, room, assignment, onPick, onRemove, onClose }
                                 {filtered.map(inv => {
                                     const isCurrent = isSwap && inv.user_id === assignment.user_id;
                                     return (
-                                        <tr key={inv.user_id} className={`${isCurrent ? 'bg-[#8B1A1A]/5' : 'hover:bg-slate-50/50'}`}>
+                                        <tr key={inv.user_id} className={`${isCurrent ? 'bg-brand-500/5' : 'hover:bg-surface2'}`}>
                                             <td className="px-4 py-2">
-                                                <div className="text-[13px] font-medium text-slate-800 flex items-center gap-1.5">
+                                                <div className="text-[13px] font-medium text-text flex items-center gap-1.5">
                                                     {inv.full_name}
-                                                    {isCurrent && <span className="text-[9px] font-bold text-[#8B1A1A] bg-[#8B1A1A]/10 px-1.5 py-0.5 rounded">CURRENT</span>}
+                                                    {isCurrent && <span className="text-[9px] font-bold text-brand-500 bg-brand-500/10 px-1.5 py-0.5 rounded">CURRENT</span>}
                                                 </div>
-                                                <div className="text-[10px] text-slate-400">{inv.employee_id || '—'} · {inv.department || '—'}</div>
+                                                <div className="text-[10px] text-textFaint">{inv.employee_id || '—'} · {inv.department || '—'}</div>
                                             </td>
-                                            <td className="px-3 py-2 text-xs text-slate-500">{ROLE_LABEL[inv.role] || inv.role}</td>
+                                            <td className="px-3 py-2 text-xs text-textMuted">{ROLE_LABEL[inv.role] || inv.role}</td>
                                             <td className="px-3 py-2 text-right text-xs">{inv.assigned_count} / {inv.effective_target}</td>
                                             <td className="px-3 py-2 text-center"><BalanceBadge balance={inv.balance} /></td>
                                             <td className="px-3 py-2 text-right pr-4">
                                                 <button disabled={isCurrent} onClick={() => pick(inv.user_id, inv)}
-                                                    className="text-[10px] font-bold uppercase tracking-wider bg-[#8B1A1A] text-white hover:bg-[#721515] disabled:bg-slate-300 disabled:cursor-not-allowed px-3 py-1 rounded cursor-pointer">
+                                                    className="text-[10px] font-bold uppercase tracking-wider bg-brand-500 text-white hover:bg-brand-600 disabled:bg-textFaint disabled:cursor-not-allowed px-3 py-1 rounded cursor-pointer">
                                                     {isCurrent ? 'Current' : (isSwap ? 'Replace' : 'Assign')}
                                                 </button>
                                             </td>
@@ -1079,13 +1209,13 @@ function AssignmentModal({ slotId, room, assignment, onPick, onRemove, onClose }
 
                 {/* Footer — Remove button only in swap mode */}
                 {isSwap && (
-                    <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
+                    <div className="px-5 py-3 border-t border-border flex items-center justify-between">
                         <button onClick={removeCurrent}
-                            className="text-[11px] font-bold uppercase tracking-wider text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-3 py-1.5 rounded transition-all cursor-pointer">
+                            className="text-[11px] font-bold uppercase tracking-wider text-danger hover:text-white hover:bg-danger border border-danger/30 hover:border-danger/50 px-3 py-1.5 rounded transition-all cursor-pointer">
                             Remove this invigilator
                         </button>
                         <button onClick={onClose}
-                            className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer">
+                            className="text-[11px] font-semibold text-textMuted hover:text-text cursor-pointer">
                             Cancel
                         </button>
                     </div>

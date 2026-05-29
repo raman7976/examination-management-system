@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { getExamSlots, generateMicroPlan, getPlanView, getSeatingArrangementStatus } from '../api/api.js';
+import PeriodScopedEmptyState from '../components/PeriodScopedEmptyState.jsx';
 
 export default function SeatingArrangement() {
     const [slots, setSlots] = useState([]);
@@ -203,9 +204,9 @@ export default function SeatingArrangement() {
     const getLaneColor = (lane) => {
         switch (lane) {
             case 'P': return 'bg-purple-100 text-purple-800 border-purple-200';
-            case 'G': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+            case 'G': return 'bg-success/15 text-success border-success/30';
             case 'Y': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-            default: return 'bg-slate-100 text-slate-800 border-slate-200';
+            default: return 'bg-surface2 text-text border-border';
         }
     };
 
@@ -225,16 +226,16 @@ export default function SeatingArrangement() {
             {/* Header */}
             <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Micro-Seating View</h1>
-                    <p className="text-sm text-slate-500 mt-1">Final Student-to-Chair Allocation</p>
+                    <h1 className="text-2xl font-bold text-brand-500 tracking-tight">Micro-Seating View</h1>
+                    <p className="text-sm text-textMuted mt-1">Final Student-to-Chair Allocation</p>
                 </div>
 
                 <button
                     onClick={handleGenerateMicroPlan}
                     disabled={isGenerating || !selectedSlotId}
                     className={`uppercase tracking-wider text-xs font-bold px-4 py-2.5 rounded shadow-sm border transition-all ${isGenerating || !selectedSlotId
-                            ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
-                            : "bg-white text-[#8B1A1A] border-[#8B1A1A] hover:bg-red-50 hover:shadow-md cursor-pointer"
+                            ? "bg-surface2 text-textFaint border-border cursor-not-allowed"
+                            : "bg-surface text-brand-500 border-brand-500 hover:bg-danger/10 hover:shadow-md cursor-pointer"
                         }`}
                 >
                     {isGenerating ? 'Running Algorithm...' : ' Run Seating Algorithm'}
@@ -243,34 +244,44 @@ export default function SeatingArrangement() {
 
             {/* Status Message */}
             {message.text && (
-                <div className={`mb-6 p-4 rounded-lg border text-sm flex items-center justify-between shadow-sm animate-fade-in ${message.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' :
-                        message.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                            'bg-blue-50 text-blue-800 border-blue-200'
+                <div className={`mb-6 p-4 rounded-lg border text-sm flex items-center justify-between shadow-sm animate-fade-in ${message.type === 'error' ? 'bg-danger/10 text-danger border-danger/30' :
+                        message.type === 'success' ? 'bg-success/10 text-success border-success/30' :
+                            'bg-info/10 text-info border-info/30'
                     }`}>
                     <span>{message.text}</span>
                     <button onClick={() => setMessage({ type: '', text: '' })} className="opacity-50 hover:opacity-100 text-lg leading-none">×</button>
                 </div>
             )}
 
-            {/* Selector Panel */}
-            <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 mb-8">
+            {/* Selector Panel — replace with period-scoped empty state if no slots */}
+            {slots.length === 0 ? (
+                <div className="mb-8">
+                    <PeriodScopedEmptyState noun="exam slots">
+                        Add slots via <b className="text-text">Add Exam Slot</b> first, or
+                        switch to another period that already has slots.
+                    </PeriodScopedEmptyState>
+                </div>
+            ) : (
+            <div className="bg-surface p-6 rounded-xl shadow-md border border-border mb-8">
                 <div className="flex items-end gap-5 font-medium">
                     <div className="w-full relative">
-                        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                        <label className="block text-[11px] font-bold text-textFaint uppercase tracking-widest mb-2">
                             1. Select Exam Slot (Loads all rooms)
                         </label>
                         <select
-                            className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-[#8B1A1A] focus:ring-1 focus:ring-[#8B1A1A] transition-all appearance-none cursor-pointer"
+                            className="w-full bg-surface2 border border-border text-text rounded-lg p-3 text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all appearance-none cursor-pointer shadow-sm"
                             value={selectedSlotId}
                             onChange={(e) => setSelectedSlotId(e.target.value)}
                         >
                             <option value="">-- Choose Slot --</option>
-                            {slots.map(s => {
+                            {slots.map((s, idx) => {
                                 const done = slotStatus[String(s.id)]?.has_plan;
                                 const marker = done ? '✓ ' : '— ';
+                                // Show a position-based slot number per the active period instead
+                                // of the DB id (which is an AUTO_INCREMENT counter and looks weird).
                                 return (
                                     <option key={s.id} value={s.id}>
-                                        {marker}Slot {s.id}: {new Date(s.exam_date).toLocaleDateString()} ({s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)})
+                                        {marker}Slot {idx + 1}: {new Date(s.exam_date).toLocaleDateString()} ({s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)})
                                     </option>
                                 );
                             })}
@@ -279,24 +290,25 @@ export default function SeatingArrangement() {
                 </div>
                 {/* Status summary + legend */}
                 {slots.length > 0 && (
-                    <div className="mt-3 flex items-center gap-4 text-[11px] text-slate-500">
-                        <span><b className="text-emerald-700">{statusSummary.done}</b> of <b>{statusSummary.total}</b> slots have a saved seating plan</span>
-                        <span className="text-slate-300">·</span>
-                        <span><span className="text-emerald-700 font-bold">✓</span> algorithm run · <span className="text-slate-400 font-bold">—</span> pending</span>
+                    <div className="mt-3 flex items-center gap-4 text-[11px] text-textMuted">
+                        <span><b className="text-success">{statusSummary.done}</b> of <b>{statusSummary.total}</b> slots have a saved seating plan</span>
+                        <span className="text-textFaint">·</span>
+                        <span><span className="text-success font-bold">✓</span> algorithm run · <span className="text-textFaint font-bold">—</span> pending</span>
                     </div>
                 )}
             </div>
+            )}
 
             {/* Data Accordions */}
             <div className="flex flex-col gap-4">
                 {loadingGrid ? (
-                    <div className="bg-white rounded-xl shadow-lg border border-slate-100 flex items-center justify-center p-20 text-slate-400">
+                    <div className="bg-surface rounded-xl shadow-lg border border-border flex items-center justify-center p-20 text-textFaint">
                         <span className="animate-pulse font-medium tracking-wide">Loading Classrooms...</span>
                     </div>
                 ) : !selectedSlotId ? (
                     null
                 ) : roomEntries.length === 0 ? (
-                    <div className="bg-white rounded-xl shadow-lg border border-slate-100 flex flex-col items-center justify-center p-20 text-slate-400">
+                    <div className="bg-surface rounded-xl shadow-lg border border-border flex flex-col items-center justify-center p-20 text-textFaint">
                         <p className="font-medium text-sm">No classrooms scheduled for this slot.</p>
                         <p className="text-xs mt-1 opacity-70">Run the algorithm or generate the seating layout first.</p>
                     </div>
@@ -308,23 +320,23 @@ export default function SeatingArrangement() {
                         const sortedData = [...roomItem.data].sort((a, b) => (lanePriority[a.lane] || 99) - (lanePriority[b.lane] || 99));
 
                         return (
-                            <div key={roomId} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all hover:shadow-md">
+                            <div key={roomId} className="bg-surface rounded-xl shadow-sm border border-border overflow-hidden transition-all hover:shadow-md">
                                 {/* Accordion Header */}
                                 <div
-                                    className="px-6 py-4 bg-slate-50 flex items-center justify-between cursor-pointer hover:bg-slate-100 transition-colors"
+                                    className="px-6 py-4 bg-surface2 flex items-center justify-between cursor-pointer hover:bg-surface2 transition-colors"
                                     onClick={() => toggleRoom(roomId)}
                                 >
                                     {/* Left Side */}
                                     <div className="flex items-center gap-3 w-1/4">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${isOpen ? "bg-[#8B1A1A] text-white" : "bg-slate-200 text-slate-600"
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${isOpen ? "bg-brand-500 text-white" : "bg-surface2 text-textMuted"
                                             }`}>
                                             {isOpen ? '−' : '+'}
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest leading-none">
+                                            <h3 className="text-sm font-bold text-text uppercase tracking-widest leading-none">
                                                 {roomItem.room_name}
                                             </h3>
-                                            <span className="text-[11px] text-slate-500 font-semibold tracking-wider">
+                                            <span className="text-[11px] text-textMuted font-semibold tracking-wider">
                                                 {totalStudents} STUDENTS
                                             </span>
                                         </div>
@@ -338,7 +350,7 @@ export default function SeatingArrangement() {
                                             </span>
                                         )}
                                         {roomItem.laneCounts.G > 0 && (
-                                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1 rounded text-[10px] font-bold tracking-widest uppercase">
+                                            <span className="bg-success/15 text-success border border-success/30 px-3 py-1 rounded text-[10px] font-bold tracking-widest uppercase">
                                                 <span className="opacity-60 mr-1">Green:</span> {roomItem.laneCounts.G}
                                             </span>
                                         )}
@@ -353,7 +365,7 @@ export default function SeatingArrangement() {
                                     <div className="w-1/4 flex justify-end">
                                         <button
                                             onClick={(e) => handleExport(e, roomId, roomItem)}
-                                            className="flex items-center gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-wider rounded border border-[#8B1A1A] text-[#8B1A1A] bg-white hover:bg-[#8B1A1A] hover:text-white transition-all shadow-sm"
+                                            className="flex items-center gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-wider rounded border border-brand-500 text-brand-500 bg-surface hover:bg-brand-500 hover:text-white transition-all shadow-sm"
                                         >
                                             <span>⬇ Download Excel</span>
                                         </button>
@@ -362,27 +374,27 @@ export default function SeatingArrangement() {
 
                                 {/* Accordion Body */}
                                 {isOpen && (
-                                    <div className="border-t border-slate-200 overflow-x-auto">
+                                    <div className="border-t border-border overflow-x-auto">
                                         <table className="w-full text-left border-collapse">
                                             <thead>
-                                                <tr className="bg-white border-b border-slate-200">
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">S.No.</th>
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Seat Number</th>
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Lane</th>
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Roll No</th>
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Student Name</th>
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Section</th>
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Course Name</th>
-                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Course</th>
+                                                <tr className="bg-surface border-b border-border shadow-sm">
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">S.No.</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">Seat Number</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">Lane</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">Roll No</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">Student Name</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">Section</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">Course Name</th>
+                                                    <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-textFaint">Course</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {sortedData.map((row, idx) => (
-                                                    <tr key={idx} className="hover:bg-slate-50 transition-colors bg-white">
-                                                        <td className="px-6 py-2.5 text-xs text-slate-500 font-semibold text-center">
+                                                    <tr key={idx} className="hover:bg-surface2 transition-colors bg-surface">
+                                                        <td className="px-6 py-2.5 text-xs text-textMuted font-semibold text-center">
                                                             {idx + 1}
                                                         </td>
-                                                        <td className="px-6 py-2.5 font-mono text-sm font-bold text-slate-700">
+                                                        <td className="px-6 py-2.5 font-mono text-sm font-bold text-text">
                                                             {row.seat_number}
                                                         </td>
                                                         <td className="px-6 py-2.5">
@@ -390,20 +402,20 @@ export default function SeatingArrangement() {
                                                                 {getLaneLabel(row.lane)}
                                                             </span>
                                                         </td>
-                                                        <td className="px-6 py-2.5 font-mono text-xs text-slate-600 font-semibold tracking-wide">
+                                                        <td className="px-6 py-2.5 font-mono text-xs text-textMuted font-semibold tracking-wide">
                                                             {row.roll_number}
                                                         </td>
-                                                        <td className="px-6 py-2.5 text-xs text-slate-800 font-medium">
-                                                            {row.student_name || <span className="text-slate-300 italic">Unknown</span>}
+                                                        <td className="px-6 py-2.5 text-xs text-text font-medium">
+                                                            {row.student_name || <span className="text-textFaint italic">Unknown</span>}
                                                         </td>
-                                                        <td className="px-6 py-2.5 text-xs text-slate-600 font-medium">
+                                                        <td className="px-6 py-2.5 text-xs text-textMuted font-medium">
                                                             {row.section_name || '—'}
                                                         </td>
-                                                        <td className="px-6 py-2.5 text-xs text-slate-700">
+                                                        <td className="px-6 py-2.5 text-xs text-text">
                                                             {row.course_name || '—'}
                                                         </td>
                                                         <td className="px-6 py-2.5">
-                                                            <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold tracking-widest rounded uppercase">
+                                                            <span className="px-2 py-0.5 bg-surface2 border border-border text-textMuted text-[10px] font-bold tracking-widest rounded uppercase shadow-sm">
                                                                 {row.course_code}
                                                             </span>
                                                         </td>

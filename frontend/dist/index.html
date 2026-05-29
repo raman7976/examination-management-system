@@ -2,13 +2,37 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Tiny square SVG monogram for the browser tab (scales crisp at any size) -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Bigger LNMIIT logo when pinned to a phone home screen -->
+    <link rel="apple-touch-icon" href="/lnmiitLogo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>examination_portal</title>
-    <script type="module" crossorigin src="/assets/index-CMX9u6H_.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-T0uLI-Va.css">
+
+    <!-- Inter font, used everywhere via Tailwind's font-sans default -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Set the `dark` class on <html> BEFORE React mounts. Without this,
+         a user on dark mode would briefly flash the light palette on first
+         load (FOUC). The script reads the same localStorage key the
+         ThemeProvider uses, falling back to OS preference. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var resolved = stored === 'dark' || stored === 'light' ? stored : (prefersDark ? 'dark' : 'light');
+          if (resolved === 'dark') document.documentElement.classList.add('dark');
+        } catch (e) { /* localStorage unavailable; default light is fine */ }
+      })();
+    </script>
+
+    <title>LNMIIT Examination Portal</title>
+    <script type="module" crossorigin src="/assets/index-DPw7cqzs.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CPNRnwYa.css">
   </head>
-  <body>
+  <body class="bg-bg text-text">
     <div id="root"></div>
   </body>
 </html>

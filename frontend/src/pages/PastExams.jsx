@@ -57,7 +57,7 @@ export default function PastExams() {
                 const reader = new FileReader();
                 reader.onload = () => { logoBase64Ref.current = reader.result; };
                 reader.readAsDataURL(blob);
-            } catch (e) { /* skip */ }
+            } catch { /* logo preload is best-effort — skip silently */ }
         })();
     }, []);
 
@@ -210,7 +210,9 @@ export default function PastExams() {
         const pw = doc.internal.pageSize.getWidth();
         const mx = 15;
         if (logoBase64Ref.current) {
-            try { doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14); } catch (e) { }
+            try {
+                doc.addImage(logoBase64Ref.current, 'JPEG', mx, 7, 14, 14);
+            } catch { /* logo missing/invalid — render header without it */ }
         }
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
@@ -360,7 +362,7 @@ export default function PastExams() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <svg className="animate-spin h-8 w-8 text-[#8B1A1A]" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-8 w-8 text-brand-500" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
@@ -371,19 +373,19 @@ export default function PastExams() {
     return (
         <div className="max-w-full">
             <div className="mb-6">
-                <h2 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Past Exams</h2>
-                <p className="text-sm text-slate-500 mt-1">View and download PDFs from previously saved exam sessions</p>
+                <h2 className="text-2xl font-bold text-brand-500 tracking-tight">Past Exams</h2>
+                <p className="text-sm text-textMuted mt-1">View and download PDFs from previously saved exam sessions</p>
             </div>
 
             {/* ── Step 1: Select a Session ── */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5 mb-5">
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded bg-[#8B1A1A] flex items-center justify-center text-white text-[10px] font-bold">1</span>
+            <div className="bg-surface rounded-xl shadow-lg border border-border p-5 mb-5">
+                <h3 className="text-xs font-bold text-text uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded bg-brand-500 flex items-center justify-center text-white text-[10px] font-bold">1</span>
                     Select Saved Exam Session
                 </h3>
                 {sessions.length === 0 ? (
                     <div className="py-8 text-center">
-                        <p className="text-sm text-slate-400">No saved sessions. Save one from the PDF Reports page first.</p>
+                        <p className="text-sm text-textFaint">No saved sessions. Save one from the PDF Reports page first.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -393,25 +395,25 @@ export default function PastExams() {
                                 <div key={session.id}
                                     onClick={() => handleSelectSession(session)}
                                     className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${isActive
-                                        ? 'border-[#8B1A1A] bg-[#8B1A1A]/5 shadow-md'
-                                        : 'border-slate-200 hover:border-[#8B1A1A]/40 hover:bg-slate-50'}`}>
-                                    {isActive && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white" />}
+                                        ? 'border-brand-500 bg-brand-500/5 shadow-md'
+                                        : 'border-border hover:border-brand-500/40 hover:bg-surface2'}`}>
+                                    {isActive && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-success/100 rounded-full border-2 border-white" />}
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-sm font-bold text-slate-800">{session.exam_type}</span>
+                                                <span className="text-sm font-bold text-text">{session.exam_type}</span>
                                             </div>
                                             <div className="flex items-center flex-wrap gap-2">
-                                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase rounded">{session.semester_type} Sem</span>
-                                                <span className="px-2 py-0.5 bg-[#8B1A1A]/10 text-[#8B1A1A] text-[10px] font-bold uppercase rounded">{session.academic_year}</span>
-                                                <div className="flex items-center gap-2 text-slate-500 ml-1">
+                                                <span className="px-2 py-0.5 bg-surface2 text-textMuted text-[10px] font-bold uppercase rounded">{session.semester_type} Sem</span>
+                                                <span className="px-2 py-0.5 bg-brand-500/10 text-brand-500 text-[10px] font-bold uppercase rounded">{session.academic_year}</span>
+                                                <div className="flex items-center gap-2 text-textMuted ml-1">
                                                     <div className="flex items-center gap-1" title="Total Students">
                                                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                                                         </svg>
                                                         <span className="text-[10px] font-bold">{session.total_students}</span>
                                                     </div>
-                                                    <span className="text-[10px] text-slate-300">·</span>
+                                                    <span className="text-[10px] text-textFaint">·</span>
                                                     <div className="flex items-center gap-1" title="Total Courses">
                                                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
@@ -420,10 +422,10 @@ export default function PastExams() {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <p className="text-[10px] text-slate-400 mt-2">Saved: {formatSavedAt(session.saved_at)}</p>
+                                            <p className="text-[10px] text-textFaint mt-2">Saved: {formatSavedAt(session.saved_at)}</p>
                                         </div>
                                         <button onClick={(e) => handleDelete(e, session.id)}
-                                            className="text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors p-2 rounded-lg cursor-pointer"
+                                            className="text-textFaint hover:text-danger hover:bg-danger/10 transition-colors p-2 rounded-lg cursor-pointer"
                                             title="Delete Session">
                                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -441,30 +443,30 @@ export default function PastExams() {
             {selectedSession && (
                 loadingSession ? (
                     <div className="flex items-center justify-center py-16">
-                        <svg className="animate-spin h-6 w-6 text-[#8B1A1A]" fill="none" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-6 w-6 text-brand-500" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                         </svg>
-                        <span className="ml-3 text-sm text-slate-500">Loading session data...</span>
+                        <span className="ml-3 text-sm text-textMuted">Loading session data...</span>
                     </div>
                 ) : (
                     <>
                         {/* ── Search ── */}
-                        <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5 mb-5">
+                        <div className="bg-surface rounded-xl shadow-lg border border-border p-5 mb-5">
                             <div className="relative">
-                                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textFaint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                                 </svg>
                                 <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder={viewMode === 'course' ? 'Search by course code or name...' : 'Search by hall name...'}
-                                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50/50 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 focus:border-[#8B1A1A]/40" />
+                                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-border bg-surface2 text-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40" />
                             </div>
                         </div>
 
                         {/* ── Step 2: Day → Slot ── */}
-                        <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5 mb-5">
-                            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <span className="w-5 h-5 rounded bg-[#8B1A1A] flex items-center justify-center text-white text-[10px] font-bold">2</span>
+                        <div className="bg-surface rounded-xl shadow-lg border border-border p-5 mb-5">
+                            <h3 className="text-xs font-bold text-text uppercase tracking-wider mb-4 flex items-center gap-2">
+                                <span className="w-5 h-5 rounded bg-brand-500 flex items-center justify-center text-white text-[10px] font-bold">2</span>
                                 Select Day & Slot
                             </h3>
                             <div className="flex flex-wrap gap-2">
@@ -472,14 +474,14 @@ export default function PastExams() {
                                     <button key={group.date}
                                         onClick={() => { setSelectedDay(group.date); setSelectedSlotKey(null); }}
                                         className={`px-4 py-2.5 rounded-lg text-xs font-semibold transition-all border-2 cursor-pointer ${selectedDay === group.date
-                                            ? 'bg-[#8B1A1A] text-white border-[#8B1A1A] shadow-md'
-                                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#8B1A1A]/40'}`}>
+                                            ? 'bg-brand-500 text-white border-brand-500 shadow-md'
+                                            : 'bg-surface text-text border-border hover:border-brand-500/40'}`}>
                                         <div className="font-bold">{formatDateDisplay(group.date)}</div>
                                     </button>
                                 ))}
                             </div>
                             {selectedDay && daySlots.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-slate-100">
+                                <div className="mt-4 pt-4 border-t border-border">
                                     <div className="flex flex-wrap gap-2">
                                         {daySlots.map((slot) => {
                                             const isActive = selectedSlotKey === slot.key;
@@ -487,10 +489,10 @@ export default function PastExams() {
                                                 <button key={slot.key}
                                                     onClick={() => setSelectedSlotKey(isActive ? null : slot.key)}
                                                     className={`relative px-4 py-2.5 rounded-lg text-xs font-semibold transition-all border-2 cursor-pointer ${isActive
-                                                        ? 'bg-[#8B1A1A] text-white border-[#8B1A1A] shadow-md'
-                                                        : 'bg-white text-slate-700 border-slate-200 hover:border-[#8B1A1A]/40'}`}>
+                                                        ? 'bg-brand-500 text-white border-brand-500 shadow-md'
+                                                        : 'bg-surface text-text border-border hover:border-brand-500/40'}`}>
                                                     {formatTime12(slot.start_time)} – {formatTime12(slot.end_time)}
-                                                    {isActive && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white" />}
+                                                    {isActive && <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-success/100 rounded-full border-2 border-white" />}
                                                 </button>
                                             );
                                         })}
@@ -500,16 +502,16 @@ export default function PastExams() {
                         </div>
 
                         {/* ── Step 3: Download PDFs ── */}
-                        <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
-                            <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+                        <div className="bg-surface rounded-xl shadow-lg border border-border overflow-hidden">
+                            <div className="px-5 pt-5 pb-3 border-b border-border">
                                 <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                        <span className="w-5 h-5 rounded bg-[#8B1A1A] flex items-center justify-center text-white text-[10px] font-bold">3</span>
+                                    <h3 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded bg-brand-500 flex items-center justify-center text-white text-[10px] font-bold">3</span>
                                         Download PDFs
                                     </h3>
                                     {((viewMode === 'course' && filteredCourses.length > 0) || (viewMode === 'hall' && filteredHalls.length > 0)) && (
                                         <button onClick={handleDownloadAll}
-                                            className="flex items-center gap-2 px-4 py-2 bg-[#8B1A1A] text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-[#721515] transition-all cursor-pointer shadow-sm hover:shadow-md">
+                                            className="flex items-center gap-2 px-4 py-2 bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-brand-600 transition-all cursor-pointer shadow-sm hover:shadow-md">
                                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                                             </svg>
@@ -517,13 +519,13 @@ export default function PastExams() {
                                         </button>
                                     )}
                                 </div>
-                                <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+                                <div className="flex gap-1 bg-surface2 rounded-lg p-1 w-fit">
                                     <button onClick={() => setViewMode('course')}
-                                        className={`px-4 py-1.5 text-[11px] uppercase tracking-wider font-bold rounded-md transition-all cursor-pointer ${viewMode === 'course' ? 'bg-[#8B1A1A] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'}`}>
+                                        className={`px-4 py-1.5 text-[11px] uppercase tracking-wider font-bold rounded-md transition-all cursor-pointer ${viewMode === 'course' ? 'bg-brand-500 text-white shadow-sm' : 'text-textMuted hover:bg-surface2 hover:text-text'}`}>
                                         Course Wise
                                     </button>
                                     <button onClick={() => setViewMode('hall')}
-                                        className={`px-4 py-1.5 text-[11px] uppercase tracking-wider font-bold rounded-md transition-all cursor-pointer ${viewMode === 'hall' ? 'bg-[#8B1A1A] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'}`}>
+                                        className={`px-4 py-1.5 text-[11px] uppercase tracking-wider font-bold rounded-md transition-all cursor-pointer ${viewMode === 'hall' ? 'bg-brand-500 text-white shadow-sm' : 'text-textMuted hover:bg-surface2 hover:text-text'}`}>
                                         Hall Wise
                                     </button>
                                 </div>
@@ -531,33 +533,33 @@ export default function PastExams() {
 
                             {!selectedSlotKey ? (
                                 <div className="py-16 text-center">
-                                    <p className="text-sm font-medium text-slate-400">Select a day and slot above to view courses/halls</p>
+                                    <p className="text-sm font-medium text-textFaint">Select a day and slot above to view courses/halls</p>
                                 </div>
                             ) : viewMode === 'course' ? (
                                 filteredCourses.length === 0 ? (
-                                    <div className="py-16 text-center"><p className="text-sm text-slate-400">No courses found.</p></div>
+                                    <div className="py-16 text-center"><p className="text-sm text-textFaint">No courses found.</p></div>
                                 ) : (
                                     <div className="divide-y divide-slate-100">
                                         {filteredCourses.map((course) => (
-                                            <div key={course.course_code} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                                            <div key={course.course_code} className="px-5 py-4 flex items-center justify-between hover:bg-surface2/80 transition-colors">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 rounded-lg bg-[#8B1A1A]/5 border border-[#8B1A1A]/15 flex items-center justify-center text-[#8B1A1A]">
+                                                    <div className="w-10 h-10 rounded-lg bg-brand-500/5 border border-brand-500/15 flex items-center justify-center text-brand-500">
                                                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                                                         </svg>
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className="font-mono text-xs font-bold text-[#8B1A1A]">{course.course_code}</span>
-                                                            <span className="text-xs text-slate-400">·</span>
-                                                            <span className="text-sm font-medium text-slate-800">{course.course_name}</span>
+                                                            <span className="font-mono text-xs font-bold text-brand-500">{course.course_code}</span>
+                                                            <span className="text-xs text-textFaint">·</span>
+                                                            <span className="text-sm font-medium text-text">{course.course_name}</span>
                                                         </div>
-                                                        <p className="text-[11px] text-slate-400 mt-0.5">{course.students.length} students</p>
+                                                        <p className="text-[11px] text-textFaint mt-0.5">{course.students.length} students</p>
                                                     </div>
                                                 </div>
                                                 <button onClick={() => handleDownloadCoursePDF(course)}
-                                                    className="flex items-center gap-2 px-4 py-2 bg-white text-[#8B1A1A] text-[10px] font-bold uppercase tracking-wider rounded-lg border border-[#8B1A1A]/30 hover:bg-[#8B1A1A] hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md group">
-                                                    <svg className="w-3.5 h-3.5 group-hover:text-white text-[#8B1A1A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                                    className="flex items-center gap-2 px-4 py-2 bg-surface text-brand-500 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-brand-500/30 hover:bg-brand-500 hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md group">
+                                                    <svg className="w-3.5 h-3.5 group-hover:text-white text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                                                     </svg>
                                                     Download PDF
@@ -568,17 +570,17 @@ export default function PastExams() {
                                 )
                             ) : (
                                 filteredHalls.length === 0 ? (
-                                    <div className="py-16 text-center"><p className="text-sm text-slate-400">No halls found.</p></div>
+                                    <div className="py-16 text-center"><p className="text-sm text-textFaint">No halls found.</p></div>
                                 ) : (
                                     <div className="divide-y divide-slate-200">
                                         {filteredHalls.map((hall) => {
                                             const isOpen = expandedHalls[hall.room_name];
                                             return (
                                                 <div key={hall.room_name}>
-                                                    <div className="px-5 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                                                    <div className="px-5 py-4 flex items-center justify-between hover:bg-surface2/80 transition-colors cursor-pointer group"
                                                         onClick={() => setExpandedHalls(prev => ({ ...prev, [hall.room_name]: !prev[hall.room_name] }))}>
                                                         <div className="flex items-center gap-4">
-                                                            <div className={`w-10 h-10 rounded-lg border flex items-center justify-center transition-colors ${isOpen ? 'bg-[#8B1A1A] text-white border-[#8B1A1A]' : 'bg-slate-50 text-slate-400 border-slate-200 group-hover:bg-slate-100 group-hover:text-slate-600'}`}>
+                                                            <div className={`w-10 h-10 rounded-lg border flex items-center justify-center transition-colors ${isOpen ? 'bg-brand-500 text-white border-brand-500' : 'bg-surface2 text-textFaint border-border group-hover:bg-surface2 group-hover:text-textMuted'}`}>
                                                                 {isOpen ? (
                                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
@@ -590,44 +592,44 @@ export default function PastExams() {
                                                                 )}
                                                             </div>
                                                             <div>
-                                                                <span className="font-mono text-sm font-bold text-slate-800">{hall.room_name}</span>
+                                                                <span className="font-mono text-sm font-bold text-text">{hall.room_name}</span>
                                                                 <div className="flex items-center gap-2 mt-0.5">
-                                                                    <span className="text-[11px] text-slate-400">{hall.students.length} students</span>
-                                                                    <span className="text-[11px] text-slate-300">·</span>
-                                                                    <span className="text-[11px] text-slate-400">{hall.courseList.length} course{hall.courseList.length !== 1 ? 's' : ''}</span>
+                                                                    <span className="text-[11px] text-textFaint">{hall.students.length} students</span>
+                                                                    <span className="text-[11px] text-textFaint">·</span>
+                                                                    <span className="text-[11px] text-textFaint">{hall.courseList.length} course{hall.courseList.length !== 1 ? 's' : ''}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <button onClick={(e) => { e.stopPropagation(); handleDownloadHallPDF(hall); }}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-slate-200 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer shadow-sm">
-                                                            <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface text-textMuted text-[10px] font-bold uppercase tracking-wider rounded-lg border border-border hover:bg-surface2 hover:text-text transition-colors cursor-pointer shadow-sm">
+                                                            <svg className="w-3 h-3 text-textMuted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                                                             </svg>
                                                             All ({hall.room_name})
                                                         </button>
                                                     </div>
                                                     {isOpen && (
-                                                        <div className="bg-slate-50/60 border-t border-slate-100">
+                                                        <div className="bg-surface2/60 border-t border-border shadow-sm">
                                                             {hall.courseList.map((course) => (
-                                                                <div key={course.course_code} className="px-5 pl-16 py-3 flex items-center justify-between hover:bg-slate-100/60 border-b border-slate-100 last:border-b-0">
+                                                                <div key={course.course_code} className="px-5 pl-16 py-3 flex items-center justify-between hover:bg-surface2/60 border-b border-border last:border-b-0 shadow-sm">
                                                                     <div className="flex items-center gap-3">
-                                                                        <div className="w-8 h-8 rounded bg-[#8B1A1A]/5 border border-[#8B1A1A]/15 flex items-center justify-center text-[#8B1A1A]">
+                                                                        <div className="w-8 h-8 rounded bg-brand-500/5 border border-brand-500/15 flex items-center justify-center text-brand-500">
                                                                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                                                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                                                                             </svg>
                                                                         </div>
                                                                         <div>
                                                                             <div className="flex items-center gap-2">
-                                                                                <span className="font-mono text-xs font-bold text-[#8B1A1A]">{course.course_code}</span>
-                                                                                <span className="text-xs text-slate-400">·</span>
-                                                                                <span className="text-sm font-medium text-slate-700">{course.course_name}</span>
+                                                                                <span className="font-mono text-xs font-bold text-brand-500">{course.course_code}</span>
+                                                                                <span className="text-xs text-textFaint">·</span>
+                                                                                <span className="text-sm font-medium text-text">{course.course_name}</span>
                                                                             </div>
-                                                                            <p className="text-[10px] text-slate-400 mt-0.5">{course.students.length} students in {hall.room_name}</p>
+                                                                            <p className="text-[10px] text-textFaint mt-0.5">{course.students.length} students in {hall.room_name}</p>
                                                                         </div>
                                                                     </div>
                                                                     <button onClick={() => handleDownloadHallCoursePDF(hall, course)}
-                                                                        className="flex items-center gap-2 px-4 py-2 bg-white text-[#8B1A1A] text-[10px] font-bold uppercase tracking-wider rounded-lg border border-[#8B1A1A]/30 hover:bg-[#8B1A1A] hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md group">
-                                                                        <svg className="w-3.5 h-3.5 group-hover:text-white text-[#8B1A1A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                                                        className="flex items-center gap-2 px-4 py-2 bg-surface text-brand-500 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-brand-500/30 hover:bg-brand-500 hover:text-white transition-all cursor-pointer shadow-sm hover:shadow-md group">
+                                                                        <svg className="w-3.5 h-3.5 group-hover:text-white text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                                                                         </svg>
                                                                         Download PDF

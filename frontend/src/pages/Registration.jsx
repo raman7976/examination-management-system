@@ -1,38 +1,77 @@
 import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import {
+  UserPlus,
+  Upload,
+  Users,
+  Search,
+  Download,
+  Trash2,
+  CalendarRange,
+  CheckCircle2,
+  CircleAlert,
+  ChevronDown,
+} from 'lucide-react';
+
 import {
   registerInvigilator,
   bulkRegisterInvigilators,
   getInvigilators,
   deleteInvigilator,
   downloadInvigilatorTemplate,
+  getPeriodsOverview,
+  deleteExamPeriod,
 } from '../api/api.js';
 import { usePeriod } from '../context/usePeriod.js';
+
+import Button from '../components/ui/Button.jsx';
+import Card from '../components/ui/Card.jsx';
+import Input from '../components/ui/Input.jsx';
+import Select from '../components/ui/Select.jsx';
+import Modal from '../components/ui/Modal.jsx';
+import Skeleton from '../components/ui/Skeleton.jsx';
+import { toast } from '../components/ui/toastApi.js';
+import { slideUp, stagger } from '../design/motion.js';
 
 const ROLE_LABELS = {
   faculty:     'Faculty',
   phd_student: 'PhD Student',
   lab_staff:   'Lab Staff',
 };
+const ROLE_OPTIONS = [
+  { value: '',            label: 'Select role…', disabled: true },
+  { value: 'faculty',     label: 'Faculty' },
+  { value: 'phd_student', label: 'PhD Student' },
+  { value: 'lab_staff',   label: 'Lab Staff' },
+];
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Registration tab
+//
+//  Three sub-cards (Manual / Bulk / Table) + the ExamPeriodsCard at the top.
+//  All cards use the same <Card> primitive; all form controls use the same
+//  <Input>/<Select>/<Button> primitives. This is the FIRST place an admin
+//  lands every session, so visual consistency matters most here.
+// ─────────────────────────────────────────────────────────────────────────────
 export default function Registration() {
-  // ── Manual form state ──────────────────────────────────────────────────────
-  const [form, setForm]               = useState({ employee_id: '', name: '', email: '', role: '', department: '' });
+  // ── Manual form ─────────────────────────────────────────────────────────
+  const [form, setForm] = useState({ employee_id: '', name: '', email: '', role: '', department: '' });
   const [formLoading, setFormLoading] = useState(false);
-  const [formMessage, setFormMessage] = useState({ text: '', type: '' });
+  const [formError, setFormError] = useState('');
 
-  // ── Bulk upload state ──────────────────────────────────────────────────────
-  const [bulkFile, setBulkFile]         = useState(null);
-  const [bulkLoading, setBulkLoading]   = useState(false);
-  const [bulkMessage, setBulkMessage]   = useState({ text: '', type: '' });
-  const [bulkResults, setBulkResults]   = useState(null);
+  // ── Bulk upload ─────────────────────────────────────────────────────────
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResults, setBulkResults] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
 
-  // ── Invigilator table state ────────────────────────────────────────────────
-  const [invigilators, setInvigilators]       = useState([]);
-  const [tableLoading, setTableLoading]       = useState(false);
-  const [search, setSearch]                   = useState('');
+  // ── Invigilator table ───────────────────────────────────────────────────
+  const [invigilators, setInvigilators] = useState([]);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [search, setSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
-  // ── Fetch invigilators ─────────────────────────────────────────────────────
+  // ── Fetch invigilators (debounced search) ───────────────────────────────
   const fetchInvigilators = useCallback(async (q = '') => {
     setTableLoading(true);
     try {
@@ -43,55 +82,54 @@ export default function Registration() {
   }, []);
 
   useEffect(() => { fetchInvigilators(); }, [fetchInvigilators]);
-
-  // Debounced search
   useEffect(() => {
     const t = setTimeout(() => fetchInvigilators(search), 350);
     return () => clearTimeout(t);
   }, [search, fetchInvigilators]);
 
-  // ── Manual form submit ─────────────────────────────────────────────────────
+  // ── Submit manual ───────────────────────────────────────────────────────
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.role || !form.department) {
-      setFormMessage({ text: 'Name, email, role, and department are required.', type: 'error' });
+      setFormError('Name, email, role, and department are required.');
       return;
     }
+    setFormError('');
     setFormLoading(true);
-    setFormMessage({ text: '', type: '' });
     try {
       const res = await registerInvigilator(form);
-      setFormMessage({ text: res.data.message, type: 'success' });
+      toast.success(res.data?.message || 'Invigilator registered.');
       setForm({ employee_id: '', name: '', email: '', role: '', department: '' });
       fetchInvigilators(search);
     } catch (err) {
-      setFormMessage({ text: err.response?.data?.message || 'Registration failed.', type: 'error' });
-    } finally { setFormLoading(false); }
+      setFormError(err.response?.data?.message || 'Registration failed.');
+    } finally {
+      setFormLoading(false);
+    }
   };
 
-  // ── Bulk upload ────────────────────────────────────────────────────────────
+  // ── Bulk upload ─────────────────────────────────────────────────────────
   const handleBulkUpload = async () => {
-    if (!bulkFile) { setBulkMessage({ text: 'Please select a file.', type: 'error' }); return; }
+    if (!bulkFile) { toast.error('Please select a file.'); return; }
     setBulkLoading(true);
-    setBulkMessage({ text: '', type: '' });
     setBulkResults(null);
     try {
-      const formData = new FormData();
-      formData.append('file', bulkFile);
-      const res = await bulkRegisterInvigilators(formData);
+      const fd = new FormData();
+      fd.append('file', bulkFile);
+      const res = await bulkRegisterInvigilators(fd);
       const { inserted, skipped, errors } = res.data;
-      setBulkMessage({
-        text: `Done — ${inserted} registered, ${skipped} skipped, ${errors.length} errors.`,
-        type: errors.length ? 'error' : 'success',
-      });
       setBulkResults(res.data);
       setBulkFile(null);
-      const input = document.getElementById('bulk-file-input');
-      if (input) input.value = '';
+      if (errors.length === 0)
+        toast.success(`Done — ${inserted} registered, ${skipped} skipped.`);
+      else
+        toast.warning(`Finished with errors — ${inserted} registered, ${skipped} skipped, ${errors.length} failed.`);
       fetchInvigilators(search);
     } catch (err) {
-      setBulkMessage({ text: err.response?.data?.message || 'Upload failed.', type: 'error' });
-    } finally { setBulkLoading(false); }
+      toast.error(err.response?.data?.message || 'Upload failed.');
+    } finally {
+      setBulkLoading(false);
+    }
   };
 
   const handleDownloadTemplate = async () => {
@@ -101,266 +139,423 @@ export default function Registration() {
       const a = document.createElement('a');
       a.href = url; a.download = 'invigilator_template.xlsx'; a.click();
       window.URL.revokeObjectURL(url);
-    } catch { alert('Failed to download template.'); }
+    } catch {
+      toast.error('Failed to download template.');
+    }
   };
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
+  // ── Delete invigilator ──────────────────────────────────────────────────
   const handleDelete = async (id) => {
     try {
       await deleteInvigilator(id);
       setDeleteConfirmId(null);
       fetchInvigilators(search);
-    } catch (err) { alert(err.response?.data?.message || 'Delete failed.'); }
+      toast.success('Invigilator removed.');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Delete failed.');
+    }
   };
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const StatusBadge = ({ needsActivation }) => needsActivation
-    ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Not Activated</span>
-    : <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Active</span>;
-
-  const Msg = ({ msg }) => {
-    if (!msg.text) return null;
-    return (
-      <p className={`text-xs mt-2 font-medium ${msg.type === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>{msg.text}</p>
-    );
-  };
-
-  const inputCls = "w-full text-xs border border-slate-200 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#8B1A1A] bg-white";
-
+  // ────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <motion.div {...slideUp} className="space-y-6 max-w-[1500px]">
+      {/* ── Page header — spans full width above the two columns ── */}
       <div>
-        <h1 className="text-xl font-bold text-slate-800">Invigilator Registration</h1>
-        <p className="text-xs text-slate-500 mt-1">Register faculty, PhD students, and lab staff who will serve as invigilators.</p>
+        <h1 className="text-xl font-semibold text-text">Invigilator Registration</h1>
+        <p className="text-sm text-textFaint mt-0.5">
+          Register faculty, PhD students, and lab staff who will serve as invigilators.
+        </p>
       </div>
 
-      {/* ── EXAM PERIODS CARD — the ONE place to manage semesters ───────────── */}
-      <ExamPeriodsCard />
+      {/* Two-column layout (lg+ only). The left column holds the action cards —
+          Exam Periods, Manual, Bulk Upload — stacked vertically. The right
+          column holds the wider Registered Invigilators table.
+          Default `items-stretch` (no items-start here): both columns stretch
+          to match the taller one. Combined with `h-full` on the right card,
+          the table card visually fills the empty space when the left column
+          is taller than the table's natural height. On screens below lg the
+          grid collapses to a single column. */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-      {/* ── SECTION A: Manual Form ──────────────────────────────────────────── */}
-      <div className="bg-white rounded-lg p-6" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: '#8B1A1A' }}>A</div>
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Manual Registration</h2>
-        </div>
+        {/* ─────── LEFT COLUMN ─────── */}
+        <div className="lg:col-span-5 space-y-6">
+          <ExamPeriodsCard />
 
-        <form onSubmit={handleFormSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Employee ID <span className="text-slate-400">(optional)</span></label>
-            <input type="text" className={inputCls} placeholder="EMP001"
-              value={form.employee_id} onChange={e => setForm(p => ({ ...p, employee_id: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Full Name <span className="text-red-500">*</span></label>
-            <input type="text" className={inputCls} placeholder="Dr. Rajesh Kumar"
-              value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Email <span className="text-red-500">*</span></label>
-            <input type="email" className={inputCls} placeholder="rajesh.kumar@lnmiit.ac.in"
-              value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Role <span className="text-red-500">*</span></label>
-            <select className={inputCls} value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}>
-              <option value="">Select role...</option>
-              <option value="faculty">Faculty</option>
-              <option value="phd_student">PhD Student</option>
-              <option value="lab_staff">Lab Staff</option>
-            </select>
-          </div>
+          {/* ── Manual registration ── */}
+      <Card padding="md">
+        <SectionHeader icon={<UserPlus size={16} />} title="Manual Registration" />
+
+        <form onSubmit={handleFormSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+          <Input
+            label="Employee ID (optional)"
+            value={form.employee_id}
+            onChange={(e) => setForm((p) => ({ ...p, employee_id: e.target.value }))}
+            placeholder="EMP001"
+          />
+          <Input
+            label="Full name *"
+            value={form.name}
+            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+            placeholder="Dr. Rajesh Kumar"
+          />
+          <Input
+            label="Email *"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+            placeholder="rajesh.kumar@lnmiit.ac.in"
+          />
+          <Select
+            label="Role *"
+            value={form.role}
+            onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+            options={ROLE_OPTIONS}
+          />
           <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Department <span className="text-red-500">*</span></label>
-            <input type="text" className={inputCls} placeholder="Computer Science & Engineering"
-              value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} />
+            <Input
+              label="Department *"
+              value={form.department}
+              onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+              placeholder="Computer Science & Engineering"
+            />
           </div>
-          <div className="sm:col-span-2">
-            <button type="submit" disabled={formLoading}
-              className={`px-5 py-2 text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all ${formLoading ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] cursor-pointer'}`}>
-              {formLoading ? 'Registering...' : 'Register'}
-            </button>
-            <Msg msg={formMessage} />
+          <div className="sm:col-span-2 flex items-center gap-3 flex-wrap">
+            <Button type="submit" variant="primary" loading={formLoading}>
+              Register
+            </Button>
+            {formError && (
+              <span className="text-xs text-danger flex items-center gap-1.5">
+                <CircleAlert size={13} /> {formError}
+              </span>
+            )}
           </div>
         </form>
-      </div>
+      </Card>
 
-      {/* ── SECTION B: Bulk Upload ──────────────────────────────────────────── */}
-      <div className="bg-white rounded-lg p-6" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: '#8B1A1A' }}>B</div>
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Bulk Upload</h2>
-        </div>
-        <p className="text-xs text-slate-500 mb-4 ml-9">
-          Upload an <strong>.xlsx</strong> file. Columns:&nbsp;
-          <code className="bg-slate-100 px-1 rounded font-mono text-[10px]">employee_id</code>,&nbsp;
-          <code className="bg-slate-100 px-1 rounded font-mono text-[10px]">name</code>,&nbsp;
-          <code className="bg-slate-100 px-1 rounded font-mono text-[10px]">email</code>,&nbsp;
-          <code className="bg-slate-100 px-1 rounded font-mono text-[10px]">role</code>,&nbsp;
-          <code className="bg-slate-100 px-1 rounded font-mono text-[10px]">department</code>
+      {/* ── Bulk upload ── */}
+      <Card padding="md">
+        <SectionHeader icon={<Upload size={16} />} title="Bulk Upload" />
+
+        <p className="text-xs text-textFaint mt-1.5">
+          Upload an <strong className="text-textMuted">.xlsx</strong> file with columns:&nbsp;
+          {['employee_id', 'name', 'email', 'role', 'department'].map((c, i) => (
+            <span key={c}>
+              <code className="bg-surface2 text-textMuted px-1.5 py-0.5 rounded font-mono text-[10px]">{c}</code>
+              {i < 4 ? ', ' : ''}
+            </span>
+          ))}
         </p>
 
-        <div className="ml-9 flex items-center gap-3 flex-wrap">
-          <label className="flex-1 min-w-0">
-            <input id="bulk-file-input" type="file" accept=".xlsx"
-              onChange={e => { if (e.target.files[0]) setBulkFile(e.target.files[0]); }}
-              disabled={bulkLoading}
-              className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer file:transition-all disabled:opacity-50 disabled:cursor-not-allowed" />
-          </label>
-          <button onClick={handleBulkUpload} disabled={bulkLoading || !bulkFile}
-            className={`px-4 py-2 text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all ${bulkLoading || !bulkFile ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] cursor-pointer'}`}>
-            {bulkLoading ? 'Processing...' : 'Upload'}
-          </button>
-          <button onClick={handleDownloadTemplate}
-            className="px-3 py-2 text-xs font-semibold rounded-md border cursor-pointer transition-all" style={{ color: '#475569', background: '#f8fafc', borderColor: '#e2e8f0' }}
-            onMouseEnter={e => e.target.style.background = '#f1f5f9'} onMouseLeave={e => e.target.style.background = '#f8fafc'}>
+        <label
+          htmlFor="bulk-file-input"
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) setBulkFile(f);
+          }}
+          className={[
+            'mt-4 block w-full rounded-lg border-2 border-dashed cursor-pointer transition-colors duration-base ease-out',
+            'px-5 py-6 text-center',
+            dragOver
+              ? 'border-brand-500 bg-brand-500/5'
+              : 'border-border bg-surface2 hover:border-brand-500/40',
+          ].join(' ')}
+        >
+          <input
+            id="bulk-file-input"
+            type="file"
+            accept=".xlsx"
+            onChange={(e) => { if (e.target.files[0]) setBulkFile(e.target.files[0]); }}
+            disabled={bulkLoading}
+            className="sr-only"
+          />
+          <Upload size={20} className="mx-auto text-textFaint mb-1.5" />
+          <p className="text-sm font-medium text-textMuted">
+            {bulkFile
+              ? <>Selected: <span className="text-text font-semibold">{bulkFile.name}</span>{' '}
+                <span className="text-textFaint">({(bulkFile.size / 1024).toFixed(1)} KB)</span></>
+              : 'Drag a file here, or click to browse'}
+          </p>
+        </label>
+
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <Button onClick={handleBulkUpload} disabled={!bulkFile} loading={bulkLoading} variant="primary">
+            Upload
+          </Button>
+          <Button onClick={handleDownloadTemplate} variant="secondary" iconLeft={<Download size={14} />}>
             Template
-          </button>
+          </Button>
         </div>
 
-        {bulkFile && !bulkLoading && (
-          <div className="ml-9 mt-2 flex items-center gap-2 text-xs text-slate-600">
-            <span className="font-medium truncate">{bulkFile.name}</span>
-            <span className="text-slate-400">({(bulkFile.size / 1024).toFixed(1)} KB)</span>
-          </div>
-        )}
-        <div className="ml-9"><Msg msg={bulkMessage} /></div>
-
         {bulkResults && bulkResults.errors.length > 0 && (
-          <div className="ml-9 mt-3 overflow-x-auto">
-            <table className="text-xs w-full border-collapse">
+          <div className="mt-4 overflow-x-auto">
+            <p className="text-xs font-semibold text-textMuted mb-1.5">Rows that failed</p>
+            <table className="text-xs w-full">
               <thead>
-                <tr className="text-left text-slate-500 border-b border-slate-100">
-                  <th className="pb-1 pr-4 font-medium">Row</th>
-                  <th className="pb-1 pr-4 font-medium">Email</th>
-                  <th className="pb-1 font-medium">Reason</th>
+                <tr className="text-left text-textFaint border-b border-border">
+                  <th className="py-1.5 pr-4 font-semibold">Row</th>
+                  <th className="py-1.5 pr-4 font-semibold">Email</th>
+                  <th className="py-1.5 font-semibold">Reason</th>
                 </tr>
               </thead>
               <tbody>
                 {bulkResults.errors.map((e, i) => (
-                  <tr key={i} className="border-b border-slate-50">
-                    <td className="py-1 pr-4 text-slate-500">{e.row}</td>
-                    <td className="py-1 pr-4 text-slate-700">{e.email}</td>
-                    <td className="py-1 text-red-600">{e.reason}</td>
+                  <tr key={i} className="border-b border-border/60">
+                    <td className="py-1.5 pr-4 text-textFaint">{e.row}</td>
+                    <td className="py-1.5 pr-4 text-textMuted">{e.email}</td>
+                    <td className="py-1.5 text-danger">{e.reason}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </Card>
 
-      {/* ── SECTION C: Registered Invigilators Table ────────────────────────── */}
-      <div className="bg-white rounded-lg p-6" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: '#8B1A1A' }}>C</div>
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Registered Invigilators</h2>
-          </div>
-          <span className="text-xs text-slate-400">{invigilators.length} total</span>
+        </div>
+        {/* ─────── /LEFT COLUMN ─────── */}
+
+        {/* ─────── RIGHT COLUMN — wide table ─────── */}
+        {/* `lg:self-start` opts out of the grid's stretch behaviour so this
+            column doesn't try to match the (potentially shorter) left column's
+            height. `lg:sticky lg:top-0` then pins it to the top of the main
+            scroll area so it stays in view while the left column scrolls.
+            The explicit `lg:h-[calc(100vh-9rem)]` is the missing constraint
+            that makes `overflow-y-auto` actually engage — without a hard
+            ceiling the table grew to its natural 200+ row height and never
+            scrolled. The 9rem allowance covers header (3.5rem) + content
+            padding (1.5rem) + page header (~4rem). */}
+        <div className="lg:col-span-7 lg:self-start lg:sticky lg:top-0 lg:h-[calc(100vh-9rem)]">
+
+          {/* ── Registered invigilators table ── */}
+          <Card padding="md" className="h-full flex flex-col">
+            <div className="flex items-center justify-between gap-3">
+              <SectionHeader icon={<Users size={16} />} title="Registered Invigilators" />
+          <span className="text-xs text-textFaint">{invigilators.length} total</span>
         </div>
 
-        <input
-          type="text"
-          className={`${inputCls} mb-4 max-w-xs`}
-          placeholder="Search by name, email, department..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+        <div className="mt-3 max-w-xs">
+          <Input
+            placeholder="Search by name, email, department…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            icon={<Search size={14} />}
+          />
+        </div>
 
-        {tableLoading ? (
-          <p className="text-xs text-slate-400">Loading...</p>
-        ) : invigilators.length === 0 ? (
-          <p className="text-xs text-slate-400">No invigilators registered yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="text-xs w-full border-collapse">
-              <thead>
-                <tr className="text-left text-slate-500 border-b border-slate-200">
-                  <th className="pb-2 pr-4 font-medium">Emp ID</th>
-                  <th className="pb-2 pr-4 font-medium">Name</th>
-                  <th className="pb-2 pr-4 font-medium">Email</th>
-                  <th className="pb-2 pr-4 font-medium">Role</th>
-                  <th className="pb-2 pr-4 font-medium">Department</th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invigilators.map(inv => (
-                  <tr key={inv.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                    <td className="py-2 pr-4 font-mono text-slate-500">{inv.employee_id || '—'}</td>
-                    <td className="py-2 pr-4 font-medium text-slate-800">{inv.full_name}</td>
-                    <td className="py-2 pr-4 text-slate-600">{inv.email}</td>
-                    <td className="py-2 pr-4 text-slate-600">{ROLE_LABELS[inv.role] || inv.role}</td>
-                    <td className="py-2 pr-4 text-slate-600">{inv.department || '—'}</td>
-                    <td className="py-2 pr-4"><StatusBadge needsActivation={!!inv.needs_activation} /></td>
-                    <td className="py-2">
-                      {deleteConfirmId === inv.id ? (
-                        <span className="flex items-center gap-2">
-                          <button onClick={() => handleDelete(inv.id)} className="text-red-600 font-semibold cursor-pointer hover:underline">Confirm</button>
-                          <button onClick={() => setDeleteConfirmId(null)} className="text-slate-400 cursor-pointer hover:underline">Cancel</button>
-                        </span>
-                      ) : (
-                        <button onClick={() => setDeleteConfirmId(inv.id)} className="text-slate-400 hover:text-red-600 cursor-pointer transition-colors">Delete</button>
-                      )}
-                    </td>
+        {/* Table area expands to fill the card; scrolls internally if rows
+            exceed the visible height. `min-h-0` is required for the inner
+            overflow to engage (flex children default to min-height:auto). */}
+        <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
+          {tableLoading ? (
+            <Skeleton lines={4} height="h-8" />
+          ) : invigilators.length === 0 ? (
+            <p className="text-sm text-textFaint">No invigilators match this search.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-textFaint border-b border-border">
+                    <th className="pb-2 pr-4 font-semibold">Emp ID</th>
+                    <th className="pb-2 pr-4 font-semibold">Name</th>
+                    <th className="pb-2 pr-4 font-semibold">Email</th>
+                    <th className="pb-2 pr-4 font-semibold">Role</th>
+                    <th className="pb-2 pr-4 font-semibold">Department</th>
+                    <th className="pb-2 pr-4 font-semibold">Status</th>
+                    <th className="pb-2 font-semibold">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <motion.tbody variants={stagger} initial="initial" animate="animate">
+                  {invigilators.map((inv) => (
+                    <motion.tr
+                      key={inv.id}
+                      variants={slideUp}
+                      className="border-b border-border/60 hover:bg-surface2/60 transition-colors"
+                    >
+                      <td className="py-2 pr-4 font-mono text-textFaint">{inv.employee_id || '—'}</td>
+                      <td className="py-2 pr-4 font-semibold text-text">{inv.full_name}</td>
+                      <td className="py-2 pr-4 text-textMuted">{inv.email}</td>
+                      <td className="py-2 pr-4 text-textMuted">{ROLE_LABELS[inv.role] || inv.role}</td>
+                      <td className="py-2 pr-4 text-textMuted">{inv.department || '—'}</td>
+                      <td className="py-2 pr-4">
+                        <StatusPill needsActivation={!!inv.needs_activation} />
+                      </td>
+                      <td className="py-2">
+                        {deleteConfirmId === inv.id ? (
+                          <span className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleDelete(inv.id)}
+                              className="text-danger font-semibold hover:underline cursor-pointer">
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmId(null)}
+                              className="text-textFaint hover:underline cursor-pointer">
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirmId(inv.id)}
+                            className="text-textFaint hover:text-danger transition-colors cursor-pointer">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </td>
+                    </motion.tr>
+                  ))}
+                </motion.tbody>
+              </table>
+            </div>
+          )}
+            </div>
+          </Card>
+        </div>
+        {/* ─────── /RIGHT COLUMN ─────── */}
+
       </div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Small shared bits
+// ─────────────────────────────────────────────────────────────────────────────
+function SectionHeader({ icon, title }) {
+  return (
+    <div className="flex items-center gap-2.5 text-text">
+      <span className="w-7 h-7 rounded-md bg-brand-500/10 text-brand-500 flex items-center justify-center">
+        {icon}
+      </span>
+      <h2 className="text-sm font-semibold">{title}</h2>
     </div>
   );
 }
 
+function StatusPill({ needsActivation }) {
+  return needsActivation
+    ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-warning/10 text-warning">Not activated</span>
+    : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success">Active</span>;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
-//  Exam Periods Card — semester dropdown + midterm/endterm pills + create
-//  This is the ONE place in the whole app where periods can be managed.
+//  Exam Periods Card — the only place periods can be managed.
 // ═════════════════════════════════════════════════════════════════════════════
 function ExamPeriodsCard() {
   const {
-    periodsLoaded, periodsError, activePeriod,
+    periodsLoaded, periodsError, activePeriod, periodVersion,
     semesterLabels, activeSemester, periodsInSemester,
-    switchToSemester, switchToExamType, createNewSemester,
+    switchToSemester, switchToExamType, switchToPeriod, createNewSemester,
     loadPeriods,
   } = usePeriod();
 
   const [showCreate, setShowCreate] = useState(false);
-  const [newLabel, setNewLabel] = useState('');
+  // All Periods table is collapsible — defaults to OPEN so a first-time admin
+  // sees data immediately. A non-default key in localStorage would be overkill;
+  // we re-default to open whenever the card unmounts.
+  const [periodsOpen, setPeriodsOpen] = useState(true);
+  const [newSem, setNewSem] = useState('EVEN');
+  const defaultStartYear = (() => {
+    const d = new Date();
+    return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+  })();
+  const [newYearStart, setNewYearStart] = useState(defaultStartYear);
   const [creating, setCreating] = useState(false);
-  const [msg, setMsg] = useState({ text: '', type: '' });
+
+  const SEMESTER_OPTIONS = ['EVEN', 'ODD', 'SUMMER TERM'].map(s => ({ value: s, label: s }));
+  const yearOptions = Array.from({ length: 11 }, (_, i) => defaultStartYear - 5 + i)
+    .map(y => ({ value: y, label: `${y}-${y + 1}` }));
+  const newLabel = `${newSem} ${newYearStart}-${newYearStart + 1}`;
+
+  // Periods overview
+  const [overview, setOverview] = useState([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const refreshOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    try {
+      const res = await getPeriodsOverview();
+      setOverview(res.data?.periods || []);
+    } catch { setOverview([]); }
+    finally { setOverviewLoading(false); }
+  }, []);
+  useEffect(() => { refreshOverview(); }, [refreshOverview, periodVersion]);
+
+  const activateRow = async (id) => {
+    if (id === activePeriod?.id) return;
+    await switchToPeriod(id);
+  };
+
+  // Delete modal state
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const res = await deleteExamPeriod(pendingDelete.id);
+      const d = res.data?.deleted || {};
+      const parts = [];
+      if (d.slots)             parts.push(`${d.slots} slot(s)`);
+      if (d.scheduled_exams)   parts.push(`${d.scheduled_exams} scheduled exam(s)`);
+      if (d.seating_plans)     parts.push(`${d.seating_plans} seating plan row(s)`);
+      if (d.invig_assignments) parts.push(`${d.invig_assignments} invigilator assignment(s)`);
+      if (d.swap_requests)     parts.push(`${d.swap_requests} swap request(s)`);
+      toast.success(
+        parts.length === 0
+          ? `Deleted "${pendingDelete.semester_label} / ${pendingDelete.exam_type}" (was empty).`
+          : `Deleted — wiped ${parts.join(', ')}.`
+      );
+      setPendingDelete(null);
+      await refreshOverview();
+      await loadPeriods();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Delete failed.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleCreate = async () => {
-    if (!newLabel.trim()) { setMsg({ text: 'Semester label is required.', type: 'error' }); return; }
     setCreating(true);
-    setMsg({ text: '', type: '' });
     try {
-      const res = await createNewSemester(newLabel.trim());
+      const res = await createNewSemester(newLabel);
       if (res?.already_existed) {
-        setMsg({ text: `"${newLabel.trim()}" already exists — no changes made.`, type: 'info' });
+        toast.info(`"${newLabel}" already exists — no changes made.`);
       } else {
-        setMsg({ text: `Created "${newLabel.trim()}" — both midterm & endterm ready.`, type: 'success' });
+        toast.success(`Created "${newLabel}" — both midterm & endterm ready.`);
       }
       setShowCreate(false);
-      setNewLabel('');
+      setNewSem('EVEN');
+      setNewYearStart(defaultStartYear);
+      await refreshOverview();
     } catch (err) {
-      setMsg({ text: err.response?.data?.message || 'Create failed.', type: 'error' });
+      toast.error(err.response?.data?.message || 'Create failed.');
     } finally {
       setCreating(false);
     }
   };
 
   if (!periodsLoaded) {
-    return <div className="bg-white rounded-lg p-6 text-xs text-slate-400" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>Loading exam periods…</div>;
+    return (
+      <Card padding="md">
+        <Skeleton lines={2} height="h-5" />
+      </Card>
+    );
   }
   if (periodsError) {
     return (
-      <div className="bg-red-50 rounded-lg p-4 text-xs text-red-700 flex items-center justify-between">
-        <span>⚠ {periodsError}</span>
-        <button onClick={loadPeriods} className="font-bold uppercase tracking-wider px-3 py-1 rounded border border-red-300 hover:bg-red-100 cursor-pointer">Retry</button>
-      </div>
+      <Card padding="md" className="border-danger/40 bg-danger/5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-danger flex items-center gap-2">
+            <CircleAlert size={16} /> {periodsError}
+          </span>
+          <Button onClick={loadPeriods} variant="outline" size="sm">Retry</Button>
+        </div>
+      </Card>
     );
   }
 
@@ -368,33 +563,34 @@ function ExamPeriodsCard() {
   const endterm = periodsInSemester.find(p => p.exam_type === 'endterm');
 
   return (
-    <div className="bg-white rounded-lg p-6" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)' }}>
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: '#8B1A1A' }}>✓</div>
-        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Exam Periods</h2>
+    <Card padding="md">
+      <div className="flex items-start justify-between flex-wrap gap-2">
+        <SectionHeader icon={<CalendarRange size={16} />} title="Exam Periods" />
         {activePeriod && (
-          <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-success/10 text-success">
+            <CheckCircle2 size={11} />
             Active: {activePeriod.semester_label} · {activePeriod.exam_type}
           </span>
         )}
       </div>
-      <p className="text-xs text-slate-500 mb-4">
-        Switch between semesters/exams or create a new semester here. This is the only tab where the active period can be changed.
+      <p className="text-xs text-textFaint mt-1.5">
+        Switch between semesters/exams or create a new semester. This is the only tab where the active period can be changed.
       </p>
 
       {/* Semester + Exam pickers */}
       {semesterLabels.length > 0 && (
-        <div className="flex flex-wrap items-center gap-4 mb-4">
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Semester</label>
-            <select value={activeSemester} onChange={(e) => switchToSemester(e.target.value)}
-              className="px-3 py-1.5 text-sm rounded-md border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-1 focus:ring-[#8B1A1A]/30">
-              {semesterLabels.map(lab => <option key={lab} value={lab}>{lab}</option>)}
-            </select>
+        <div className="flex flex-wrap items-end gap-4 mt-4">
+          <div className="min-w-[180px]">
+            <Select
+              label="Semester"
+              value={activeSemester}
+              onChange={(e) => switchToSemester(e.target.value)}
+              options={semesterLabels.map(lab => ({ value: lab, label: lab }))}
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Exam</label>
-            <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-textFaint">Exam</label>
+            <div className="inline-flex gap-1 bg-surface2 p-0.5 rounded-md border border-border">
               {[
                 { key: 'midterm', label: 'Midterm', period: midterm },
                 { key: 'endterm', label: 'Endterm', period: endterm },
@@ -402,14 +598,22 @@ function ExamPeriodsCard() {
                 const active = activePeriod && activePeriod.exam_type === et.key && activePeriod.semester_label === activeSemester;
                 const exists = !!et.period;
                 return (
-                  <button key={et.key} disabled={!exists}
+                  <button
+                    key={et.key}
+                    disabled={!exists}
                     onClick={() => switchToExamType(et.key)}
                     title={exists ? '' : 'Not created yet'}
-                    className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-colors ${
-                      active ? 'bg-[#8B1A1A] text-white' :
-                      exists ? 'text-slate-500 hover:text-slate-700 hover:bg-white cursor-pointer' :
-                               'text-slate-300 cursor-not-allowed'
-                    }`}>{et.label}</button>
+                    className={[
+                      'px-3 h-8 text-[11px] font-bold uppercase tracking-wider rounded transition-colors duration-fast',
+                      active
+                        ? 'bg-brand-500 text-white'
+                        : exists
+                          ? 'text-textMuted hover:text-text hover:bg-surface cursor-pointer'
+                          : 'text-textFaint/60 cursor-not-allowed',
+                    ].join(' ')}
+                  >
+                    {et.label}
+                  </button>
                 );
               })}
             </div>
@@ -417,31 +621,195 @@ function ExamPeriodsCard() {
         </div>
       )}
 
-      {/* + New Semester */}
-      <div className="border-t border-slate-100 pt-4">
-        {!showCreate ? (
-          <button onClick={() => setShowCreate(true)}
-            className="text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md border border-[#8B1A1A]/40 text-[#8B1A1A] hover:bg-[#8B1A1A] hover:text-white transition-all cursor-pointer">
-            + New Semester
-          </button>
+      {/* ── All Periods overview table ─ collapsible ──
+          Click the header row to fold the table away. The chevron rotates,
+          and the body slides closed with a brief height/opacity animation.
+          We keep the body MOUNTED while animating (`AnimatePresence` would
+          unmount it, losing scroll position). Instead a `motion.div` with
+          height:auto↔0 keeps it in the tree. */}
+      <div className="border-t border-border pt-4 mt-5">
+        <button
+          onClick={() => setPeriodsOpen((o) => !o)}
+          aria-expanded={periodsOpen}
+          className="w-full flex items-center justify-between gap-2 group cursor-pointer mb-2"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-textFaint group-hover:text-textMuted transition-colors">
+            All Periods
+          </p>
+          <ChevronDown
+            size={14}
+            className={[
+              'text-textFaint group-hover:text-textMuted transition-transform duration-base ease-out',
+              periodsOpen ? 'rotate-0' : '-rotate-90',
+            ].join(' ')}
+          />
+        </button>
+
+        <motion.div
+          initial={false}
+          animate={{
+            height:  periodsOpen ? 'auto' : 0,
+            opacity: periodsOpen ? 1 : 0,
+          }}
+          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          style={{ overflow: 'hidden' }}
+        >
+        {overviewLoading ? (
+          <Skeleton lines={3} height="h-7" />
+        ) : overview.length === 0 ? (
+          <p className="text-xs text-textFaint py-2">No periods created yet.</p>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} autoFocus
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setShowCreate(false); setNewLabel(''); } }}
-              placeholder='Semester label, e.g. "Even 2024-25"'
-              className="px-3 py-1.5 text-sm rounded-md border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#8B1A1A]/20 w-64" />
-            <button onClick={handleCreate} disabled={creating}
-              className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md text-white ${creating ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] cursor-pointer'}`}>
-              {creating ? 'Creating…' : 'Create Both'}
-            </button>
-            <button onClick={() => { setShowCreate(false); setNewLabel(''); }}
-              className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer">Cancel</button>
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-xs">
+              <thead className="bg-surface2 text-[10px] uppercase tracking-wider text-textFaint">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Period</th>
+                  <th className="px-3 py-2 text-right font-semibold">Slots</th>
+                  <th className="px-3 py-2 text-right font-semibold">Scheduled</th>
+                  <th className="px-3 py-2 text-right font-semibold">Seating</th>
+                  <th className="px-3 py-2 text-right font-semibold">Invigilators</th>
+                  <th className="px-3 py-2 text-center font-semibold">Active</th>
+                  <th className="px-3 py-2 text-center font-semibold w-12"></th>
+                </tr>
+              </thead>
+              <motion.tbody variants={stagger} initial="initial" animate="animate">
+                {overview.map((p) => {
+                  const isActive = !!p.is_active;
+                  return (
+                    <motion.tr
+                      key={p.id}
+                      variants={slideUp}
+                      onClick={() => !isActive && activateRow(p.id)}
+                      title={isActive ? '' : 'Click to activate this period'}
+                      className={[
+                        'border-t border-border transition-colors duration-fast',
+                        isActive
+                          ? 'bg-success/5'
+                          : 'hover:bg-brand-500/5 cursor-pointer',
+                      ].join(' ')}
+                    >
+                      <td className="px-3 py-2">
+                        <span className="font-semibold text-text">{p.semester_label}</span>
+                        <span className="text-textFaint"> · </span>
+                        <span className="uppercase tracking-wider text-[10px] font-bold text-textMuted">{p.exam_type}</span>
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-textMuted">{p.slots}</td>
+                      <td className="px-3 py-2 text-right font-mono text-textMuted">{p.scheduled_exams}</td>
+                      <td className="px-3 py-2 text-right font-mono text-textMuted">{p.seating_plans}</td>
+                      <td className="px-3 py-2 text-right font-mono text-textMuted">{p.invig_assignments}</td>
+                      <td className="px-3 py-2 text-center">
+                        {isActive
+                          ? <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success">Active</span>
+                          : <span className="inline-block text-[10px] text-brand-500 font-bold uppercase tracking-wider">Activate →</span>}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {!isActive && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setPendingDelete(p); }}
+                            title="Delete this period and everything under it"
+                            className="text-textFaint hover:text-danger transition-colors cursor-pointer p-1"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </td>
+                    </motion.tr>
+                  );
+                })}
+              </motion.tbody>
+            </table>
           </div>
         )}
-        {msg.text && (
-          <p className={`text-xs mt-3 font-medium ${msg.type === 'error' ? 'text-red-600' : msg.type === 'success' ? 'text-emerald-700' : 'text-slate-500'}`}>{msg.text}</p>
+        <p className="text-[10px] text-textFaint italic mt-2">
+          Click any non-active row to switch the active period. Click the trash icon to delete a period.
+        </p>
+        </motion.div>
+      </div>
+
+      {/* + New Semester */}
+      <div className="border-t border-border pt-4 mt-4">
+        {!showCreate ? (
+          <Button onClick={() => setShowCreate(true)} variant="outline" size="sm">
+            + New Semester
+          </Button>
+        ) : (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[160px]">
+              <Select
+                label="Semester"
+                value={newSem}
+                onChange={(e) => setNewSem(e.target.value)}
+                options={SEMESTER_OPTIONS}
+              />
+            </div>
+            <div className="min-w-[160px]">
+              <Select
+                label="Academic Year"
+                value={newYearStart}
+                onChange={(e) => setNewYearStart(Number(e.target.value))}
+                options={yearOptions}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-textFaint">Preview</span>
+              <span className="text-sm font-semibold text-brand-500 px-3 h-10 inline-flex items-center bg-brand-500/10 rounded-md">{newLabel}</span>
+            </div>
+            <Button onClick={handleCreate} loading={creating} variant="primary" size="md">
+              Create
+            </Button>
+            <Button
+              onClick={() => {
+                setShowCreate(false);
+                setNewSem('EVEN');
+                setNewYearStart(defaultStartYear);
+              }}
+              variant="ghost"
+              size="md"
+            >
+              Cancel
+            </Button>
+          </div>
         )}
       </div>
-    </div>
+
+      {/* Delete-period modal — shared <Modal/> primitive */}
+      <Modal
+        open={!!pendingDelete}
+        onClose={() => !deleting && setPendingDelete(null)}
+        title="Delete period?"
+        size="md"
+      >
+        {pendingDelete && (
+          <>
+            <p className="text-sm text-text mb-3">
+              <span className="font-semibold">{pendingDelete.semester_label}</span>
+              <span className="text-textFaint"> · </span>
+              <span className="uppercase tracking-wider text-[11px] font-bold text-textMuted">{pendingDelete.exam_type}</span>
+            </p>
+            <div className="bg-danger/5 border border-danger/30 rounded-lg p-3 mb-4 text-xs text-text">
+              <p className="font-semibold mb-1.5 text-danger">This will permanently remove:</p>
+              <ul className="space-y-0.5 ml-4 list-disc text-textMuted">
+                <li><b className="text-text">{pendingDelete.slots}</b> exam slot(s)</li>
+                <li><b className="text-text">{pendingDelete.scheduled_exams}</b> scheduled exam(s)</li>
+                <li><b className="text-text">{pendingDelete.seating_plans}</b> seating plan row(s)</li>
+                <li><b className="text-text">{pendingDelete.invig_assignments}</b> invigilator assignment(s)</li>
+                <li>plus role targets, overrides, and any related swap requests</li>
+              </ul>
+              <p className="mt-2 text-[11px] text-textFaint italic">
+                Past Exams archive snapshots are <b className="text-textMuted">not</b> affected.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button onClick={() => setPendingDelete(null)} disabled={deleting} variant="secondary" size="md">
+                Cancel
+              </Button>
+              <Button onClick={confirmDelete} loading={deleting} variant="danger" size="md">
+                Delete forever
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+    </Card>
   );
 }

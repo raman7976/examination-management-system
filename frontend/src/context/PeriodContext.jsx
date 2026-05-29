@@ -109,6 +109,7 @@ export function PeriodProvider({ children }) {
         activeSemester,
         periodsInSemester,
         loadPeriods,
+        switchToPeriod,      // direct activation by period id — used by the overview table
         switchToSemester,
         switchToExamType,
         createNewSemester,

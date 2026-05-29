@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import PeriodScopedEmptyState from '../components/PeriodScopedEmptyState.jsx';
 
 const API = '/api/exams';
 
@@ -16,9 +17,9 @@ function authHeaders(extra = {}) {
 
 function Badge({ status }) {
     const styles = {
-        saved:   'bg-emerald-100 text-emerald-800',
-        pending: 'bg-amber-100 text-amber-800',
-        empty:   'bg-slate-100 text-slate-500',
+        saved:   'bg-success/15 text-success',
+        pending: 'bg-warning/15 text-warning',
+        empty:   'bg-surface2 text-textMuted',
     };
     const labels = { saved: 'Saved', pending: 'Pending', empty: 'No courses' };
     const key = status in styles ? status : 'empty';
@@ -33,12 +34,12 @@ function Step({ num, title, active, done }) {
     return (
         <div className="flex items-center gap-2.5">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold flex-shrink-0 transition-colors duration-300 ${
-                done ? 'bg-emerald-500 text-white' : active ? 'bg-[#8B1A1A] text-white' : 'bg-slate-200 text-slate-400'
+                done ? 'bg-success/100 text-white' : active ? 'bg-brand-500 text-white' : 'bg-surface2 text-textFaint'
             }`}>
                 {done ? '✓' : num}
             </div>
             <span className={`text-[13px] ${
-                active ? 'font-bold text-slate-800' : done ? 'font-medium text-emerald-500' : 'font-medium text-slate-400'
+                active ? 'font-bold text-text' : done ? 'font-medium text-success' : 'font-medium text-textFaint'
             }`}>
                 {title}
             </span>
@@ -49,9 +50,9 @@ function Step({ num, title, active, done }) {
 function Toast({ message, type, onClose }) {
     useEffect(() => { const t = setTimeout(onClose, 4500); return () => clearTimeout(t); }, [onClose]);
     const styles = {
-        success: 'bg-emerald-50 border-emerald-500 text-emerald-800',
-        error:   'bg-red-50 border-red-500 text-red-800',
-        info:    'bg-red-50 border-[#8B1A1A] text-red-900',
+        success: 'bg-success/10 border-success/30 text-success',
+        error:   'bg-danger/10 border-danger text-danger',
+        info:    'bg-danger/10 border-brand-500 text-danger',
     };
     const s = styles[type] ?? styles.info;
     return (
@@ -72,17 +73,19 @@ function Spinner() {
 //  Per-slot room selector panel (expanded inline under a slot row)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SlotRoomSelector({ slotId, classrooms, selectedIds, onChange }) {
-    const toggle   = (id) => onChange(slotId, selectedIds.includes(id) ? selectedIds.filter(x => x !== id) : [...selectedIds, id]);
-    const selectAll = () => onChange(slotId, classrooms.map(r => r.id));
-    const clearAll  = () => onChange(slotId, []);
-
-    const building1 = classrooms.filter(r => r.location_order < 50);
-    const building2 = classrooms.filter(r => r.location_order >= 50);
-
-    const RoomGroup = ({ title, rooms }) => (
+// ─────────────────────────────────────────────────────────────────────────────
+//  RoomGroup — hoisted to module scope (was defined INSIDE SlotRoomSelector,
+//  which created a brand-new component identity on every parent render. React
+//  treated each render's <RoomGroup/> as a different component and tore down
+//  the entire button tree — bad for performance, state, and focus.)
+//
+//  Behaviour is unchanged: same JSX, same Tailwind classes, same callbacks.
+//  We pass `selectedIds` and `toggle` in as props instead of closing over them.
+// ─────────────────────────────────────────────────────────────────────────────
+function RoomGroup({ title, rooms, selectedIds, toggle }) {
+    return (
         <div className="mb-2.5">
-            <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-1.5">{title}</p>
+            <p className="text-[10px] font-bold text-textFaint tracking-widest uppercase mb-1.5">{title}</p>
             <div className="flex flex-wrap gap-1.5">
                 {rooms.map(r => {
                     const on = selectedIds.includes(r.id);
@@ -91,8 +94,8 @@ function SlotRoomSelector({ slotId, classrooms, selectedIds, onChange }) {
                             title={`Purple:${r.cap_purple} Green:${r.cap_green} Yellow:${r.cap_yellow} | ${r.type}`}
                             className={`px-2.5 py-0.5 rounded text-[11px] font-mono cursor-pointer transition-all duration-150 border-[1.5px] ${
                                 on
-                                    ? 'border-[#8B1A1A] bg-red-50 text-[#8B1A1A] font-bold'
-                                    : 'border-slate-200 bg-slate-50 text-slate-500 font-medium'
+                                    ? 'border-brand-500 bg-danger/10 text-brand-500 font-bold'
+                                    : 'border-border bg-surface2 text-textMuted font-medium'
                             }`}>
                             {r.room_name}
                         </button>
@@ -101,31 +104,40 @@ function SlotRoomSelector({ slotId, classrooms, selectedIds, onChange }) {
             </div>
         </div>
     );
+}
+
+function SlotRoomSelector({ slotId, classrooms, selectedIds, onChange }) {
+    const toggle   = (id) => onChange(slotId, selectedIds.includes(id) ? selectedIds.filter(x => x !== id) : [...selectedIds, id]);
+    const selectAll = () => onChange(slotId, classrooms.map(r => r.id));
+    const clearAll  = () => onChange(slotId, []);
+
+    const building1 = classrooms.filter(r => r.location_order < 50);
+    const building2 = classrooms.filter(r => r.location_order >= 50);
 
     return (
-        <div className="p-3.5 bg-red-50 rounded-lg border border-red-200">
+        <div className="p-3.5 bg-danger/10 rounded-lg border border-danger/30">
             <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-slate-800">
+                <span className="text-xs font-semibold text-text">
                     Rooms for this slot
                     <span className={`ml-2 rounded-full px-2 py-px text-[11px] font-bold ${
-                        selectedIds.length === 0 ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+                        selectedIds.length === 0 ? 'bg-danger/15 text-danger' : 'bg-success/15 text-success'
                     }`}>
                         {selectedIds.length} selected
                     </span>
                 </span>
                 <div className="flex gap-2.5">
-                    <button onClick={selectAll} className="bg-transparent border-none cursor-pointer text-[11px] text-[#8B1A1A] font-bold hover:underline">All</button>
-                    <button onClick={clearAll}  className="bg-transparent border-none cursor-pointer text-[11px] text-red-500 font-bold hover:underline">None</button>
+                    <button onClick={selectAll} className="bg-transparent border-none cursor-pointer text-[11px] text-brand-500 font-bold hover:underline">All</button>
+                    <button onClick={clearAll}  className="bg-transparent border-none cursor-pointer text-[11px] text-danger font-bold hover:underline">None</button>
                 </div>
             </div>
 
-            <RoomGroup title="Academic Block  (LH-1 → CP)" rooms={building1} />
+            <RoomGroup title="Academic Block  (LH-1 → CP)" rooms={building1} selectedIds={selectedIds} toggle={toggle} />
             {building2.length > 0 && (
-                <RoomGroup title="Incubation Centre  (LH-16 → LH-19)" rooms={building2} />
+                <RoomGroup title="Incubation Centre  (LH-16 → LH-19)" rooms={building2} selectedIds={selectedIds} toggle={toggle} />
             )}
 
             {selectedIds.length === 0 && (
-                <p className="text-xs text-red-500 font-semibold mt-1.5">
+                <p className="text-xs text-danger font-semibold mt-1.5">
                     ⚠ No rooms selected — this slot will be skipped during export.
                 </p>
             )}
@@ -336,7 +348,7 @@ export default function SeatingManager() {
                 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
                 @keyframes slideUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
                 .animate-slideUp { animation: slideUp 0.25s ease; }
-                .slot-row:hover td { background: #fef2f2 !important; }
+                .slot-row:hover td { background: rgb(var(--color-brand-500) / 0.05) !important; }
             `}</style>
 
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -347,14 +359,14 @@ export default function SeatingManager() {
                     {/* ── Page header ── */}
                     <div className="flex items-end justify-between mb-8">
                         <div>
-                            <h1 className="text-2xl font-bold text-[#8B1A1A] tracking-tight">Seating Plan Assignment</h1>
-                            <p className="text-sm text-slate-500 mt-1">Per-slot room assignment</p>
+                            <h1 className="text-2xl font-bold text-brand-500 tracking-tight">Seating Plan Assignment</h1>
+                            <p className="text-sm text-textMuted mt-1">Per-slot room assignment</p>
                         </div>
                         <div className="flex gap-3">
                             {[['Total Slots', slots.length], ['With Exams', slotsWithExams.length], ['Seating Saved', slotsWithSeating.length]].map(([label, value]) => (
-                                <div key={label} className="bg-white border border-slate-200 rounded-xl px-5 py-2.5 text-center min-w-[90px] shadow-sm">
-                                    <div className="text-xl font-bold text-slate-800">{value}</div>
-                                    <div className="text-[11px] text-slate-400 font-medium">{label}</div>
+                                <div key={label} className="bg-surface border border-border rounded-xl px-5 py-2.5 text-center min-w-[90px] shadow-sm">
+                                    <div className="text-xl font-bold text-text">{value}</div>
+                                    <div className="text-[11px] text-textFaint font-medium">{label}</div>
                                 </div>
                             ))}
                         </div>
@@ -366,8 +378,8 @@ export default function SeatingManager() {
                         <div className="flex flex-col gap-5">
 
                             {/* Workflow stepper */}
-                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5">
-                                <p className="text-xs font-bold tracking-widest uppercase text-slate-400 mb-3.5">Workflow</p>
+                            <div className="bg-surface rounded-xl shadow-lg border border-border p-5">
+                                <p className="text-xs font-bold tracking-widest uppercase text-textFaint mb-3.5">Workflow</p>
                                 <div className="flex flex-col gap-3">
                                     <Step num={1} title="Expand each slot row to configure its rooms" active={workflowStep === 1} done={workflowStep > 1} />
                                     <Step num={2} title="Generate Excel — algorithm runs per-slot"   active={workflowStep === 2} done={workflowStep > 2} />
@@ -377,39 +389,39 @@ export default function SeatingManager() {
                             </div>
 
                             {/* ── Slot table with expandable room rows ── */}
-                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
+                            <div className="bg-surface rounded-xl shadow-lg border border-border overflow-hidden">
                                 {/* Toolbar */}
-                                <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
+                                <div className="px-5 py-3 border-b border-border flex justify-between items-center flex-wrap gap-2">
                                     <div>
-                                        <span className="text-xs font-bold tracking-widest uppercase text-slate-400">Exam Slots</span>
-                                        <span className="ml-2 text-[11px] text-slate-500">— click ▾ to configure rooms per slot</span>
+                                        <span className="text-xs font-bold tracking-widest uppercase text-textFaint">Exam Slots</span>
+                                        <span className="ml-2 text-[11px] text-textMuted">— click ▾ to configure rooms per slot</span>
                                     </div>
                                     <div className="flex gap-1.5 items-center">
-                                        <span className="text-[11px] text-slate-400">All slots:</span>
-                                        <button onClick={() => setGlobalRooms(classrooms.map(r => r.id))} className="bg-transparent border-none cursor-pointer text-[11px] text-[#8B1A1A] font-bold hover:underline">All rooms</button>
-                                        <button onClick={() => setGlobalRooms([])} className="bg-transparent border-none cursor-pointer text-[11px] text-red-500 font-bold hover:underline">Clear rooms</button>
-                                        <span className="text-slate-200 px-1">|</span>
-                                        <button onClick={refreshStatus} className="bg-transparent border-none cursor-pointer text-xs text-slate-500 hover:text-slate-700 transition-colors">↻ Refresh</button>
+                                        <span className="text-[11px] text-textFaint">All slots:</span>
+                                        <button onClick={() => setGlobalRooms(classrooms.map(r => r.id))} className="bg-transparent border-none cursor-pointer text-[11px] text-brand-500 font-bold hover:underline">All rooms</button>
+                                        <button onClick={() => setGlobalRooms([])} className="bg-transparent border-none cursor-pointer text-[11px] text-danger font-bold hover:underline">Clear rooms</button>
+                                        <span className="text-textFaint px-1">|</span>
+                                        <button onClick={refreshStatus} className="bg-transparent border-none cursor-pointer text-xs text-textMuted hover:text-text transition-colors">↻ Refresh</button>
                                     </div>
                                 </div>
 
                                 {loadingStatus ? (
-                                    <div className="p-10 text-center text-slate-400 text-sm">Loading…</div>
+                                    <div className="p-10 text-center text-textFaint text-sm">Loading…</div>
                                 ) : fetchError ? (
-                                    <div className="p-7 m-4 bg-red-50 border border-red-200 rounded-xl">
-                                        <p className="text-[13px] font-bold text-red-800 mb-2">
+                                    <div className="p-7 m-4 bg-danger/10 border border-danger/30 rounded-xl">
+                                        <p className="text-[13px] font-bold text-danger mb-2">
                                             ⚠ Could not load data from server
                                         </p>
-                                        <p className="font-mono text-xs text-red-700 bg-red-100 px-3 py-2 rounded-lg mb-3 break-all">
+                                        <p className="font-mono text-xs text-danger bg-danger/15 px-3 py-2 rounded-lg mb-3 break-all">
                                             {fetchError}
                                         </p>
-                                        <p className="text-xs text-red-900 leading-relaxed">
+                                        <p className="text-xs text-danger leading-relaxed">
                                             <strong>Common causes:</strong><br />
-                                            1. <code className="bg-red-100 px-1 rounded">seating_allocations</code> table missing → run <code className="bg-red-100 px-1 rounded">migration.sql</code> on your Aiven DB<br />
-                                            2. No Vite proxy → add <code className="bg-red-100 px-1 rounded">server.proxy</code> in <code className="bg-red-100 px-1 rounded">vite.config.js</code> (see below)<br />
+                                            1. <code className="bg-danger/15 px-1 rounded">seating_allocations</code> table missing → run <code className="bg-danger/15 px-1 rounded">migration.sql</code> on your Aiven DB<br />
+                                            2. No Vite proxy → add <code className="bg-danger/15 px-1 rounded">server.proxy</code> in <code className="bg-danger/15 px-1 rounded">vite.config.js</code> (see below)<br />
                                             3. Backend not running on port 5001
                                         </p>
-                                        <pre className="text-[11px] bg-slate-800 text-sky-300 px-3.5 py-2.5 rounded-lg mt-2.5 overflow-x-auto">{`// vite.config.js
+                                        <pre className="text-[11px] bg-text text-sky-300 px-3.5 py-2.5 rounded-lg mt-2.5 overflow-x-auto">{`// vite.config.js
 export default {
   server: {
     proxy: {
@@ -419,18 +431,18 @@ export default {
 }`}</pre>
                                     </div>
                                 ) : slots.length === 0 ? (
-                                    <div className="p-10 text-center text-slate-400 text-[13px]">
-                                        No exam slots found in the database.<br />
-                                        <span className="text-xs mt-1 block">
-                                            Add slots via <strong>Add Exam Slot</strong> in the sidebar first.
-                                        </span>
+                                    <div className="p-4">
+                                        <PeriodScopedEmptyState noun="exam slots">
+                                            Add slots via <b className="text-text">Add Exam Slot</b> first, or
+                                            switch to another period that already has slots.
+                                        </PeriodScopedEmptyState>
                                     </div>
                                 ) : (
                                     <table className="w-full border-collapse">
                                         <thead>
-                                            <tr className="bg-slate-50">
+                                            <tr className="bg-surface2">
                                                 {['', 'Date', 'Day', 'Time', 'Courses', 'Rooms', 'Status'].map(h => (
-                                                    <th key={h} className="px-3 py-2 text-left text-[11px] font-bold text-slate-400 tracking-wider uppercase border-b border-slate-100">{h}</th>
+                                                    <th key={h} className="px-3 py-2 text-left text-[11px] font-bold text-textFaint tracking-wider uppercase border-b border-border">{h}</th>
                                                 ))}
                                             </tr>
                                         </thead>
@@ -445,45 +457,45 @@ export default {
                                                         {/* ── Main slot row ── */}
                                                         <tr
                                                             key={sl.slot_id}
-                                                            className={`slot-row cursor-pointer ${expanded ? '' : 'border-b border-slate-100'}`}
+                                                            className={`slot-row cursor-pointer ${expanded ? '' : 'border-b border-border'}`}
                                                             onClick={() => toggleExpand(sl.slot_id)}
                                                         >
                                                             {/* Expand button */}
-                                                            <td className={`px-1.5 py-2.5 pl-3.5 w-8 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                                                            <td className={`px-1.5 py-2.5 pl-3.5 w-8 ${expanded ? 'bg-danger/10' : i % 2 === 0 ? 'bg-surface' : 'bg-surface2'}`}>
                                                                 <button
                                                                     onClick={e => { e.stopPropagation(); toggleExpand(sl.slot_id); }}
                                                                     className={`w-6 h-6 rounded flex items-center justify-center text-[11px] font-bold leading-none transition-all duration-150 border-[1.5px] ${
                                                                         expanded
-                                                                            ? 'border-[#8B1A1A] bg-red-50 text-[#8B1A1A]'
-                                                                            : 'border-slate-200 bg-slate-100 text-slate-500'
+                                                                            ? 'border-brand-500 bg-danger/10 text-brand-500'
+                                                                            : 'border-border bg-surface2 text-textMuted'
                                                                     }`}
                                                                 >
                                                                     {expanded ? '▲' : '▾'}
                                                                 </button>
                                                             </td>
-                                                            <td className={`px-3 py-2.5 text-[13px] font-semibold text-slate-800 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>{formatDate(sl.exam_date)}</td>
-                                                            <td className={`px-3 py-2.5 text-[13px] text-slate-500 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>{sl.exam_day}</td>
-                                                            <td className={`px-3 py-2.5 font-mono text-xs text-slate-600 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                                                            <td className={`px-3 py-2.5 text-[13px] font-semibold text-text ${expanded ? 'bg-danger/10' : i % 2 === 0 ? 'bg-surface' : 'bg-surface2'}`}>{formatDate(sl.exam_date)}</td>
+                                                            <td className={`px-3 py-2.5 text-[13px] text-textMuted ${expanded ? 'bg-danger/10' : i % 2 === 0 ? 'bg-surface' : 'bg-surface2'}`}>{sl.exam_day}</td>
+                                                            <td className={`px-3 py-2.5 font-mono text-xs text-textMuted ${expanded ? 'bg-danger/10' : i % 2 === 0 ? 'bg-surface' : 'bg-surface2'}`}>
                                                                 {formatTime(sl.start_time)} – {formatTime(sl.end_time)}
                                                             </td>
-                                                            <td className={`px-3 py-2.5 text-[13px] text-slate-600 text-center ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>{sl.exam_count}</td>
+                                                            <td className={`px-3 py-2.5 text-[13px] text-textMuted text-center ${expanded ? 'bg-danger/10' : i % 2 === 0 ? 'bg-surface' : 'bg-surface2'}`}>{sl.exam_count}</td>
                                                             {/* Room count badge */}
-                                                            <td className={`px-3 py-2.5 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                                                            <td className={`px-3 py-2.5 ${expanded ? 'bg-danger/10' : i % 2 === 0 ? 'bg-surface' : 'bg-surface2'}`}>
                                                                 <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded ${
-                                                                    hasWarning ? 'text-red-500 bg-red-100' : 'text-[#8B1A1A] bg-red-50'
+                                                                    hasWarning ? 'text-danger bg-danger/15' : 'text-brand-500 bg-danger/10'
                                                                 }`}>
                                                                     {roomsSelected}/{totalRooms}{hasWarning ? ' ⚠' : ''}
                                                                 </span>
                                                             </td>
-                                                            <td className={`px-3 py-2.5 ${expanded ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                                                            <td className={`px-3 py-2.5 ${expanded ? 'bg-danger/10' : i % 2 === 0 ? 'bg-surface' : 'bg-surface2'}`}>
                                                                 <Badge status={sl.exam_count === 0 ? 'empty' : sl.has_seating ? 'saved' : 'pending'} />
                                                             </td>
                                                         </tr>
 
                                                         {/* ── Expandable room selector row ── */}
                                                         {expanded && (
-                                                            <tr key={`${sl.slot_id}-expand`} className="border-b-2 border-red-200">
-                                                                <td colSpan={7} className="px-3.5 pt-1.5 pb-3.5 bg-red-50">
+                                                            <tr key={`${sl.slot_id}-expand`} className="border-b-2 border-danger/30">
+                                                                <td colSpan={7} className="px-3.5 pt-1.5 pb-3.5 bg-danger/10">
                                                                     <SlotRoomSelector
                                                                         slotId={sl.slot_id}
                                                                         classrooms={classrooms}
@@ -502,18 +514,18 @@ export default {
                             </div>
 
                             {/* ── Upload zone ── */}
-                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-5">
+                            <div className="bg-surface rounded-xl shadow-lg border border-border p-5">
                                 <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-7 h-7 rounded-full bg-[#8B1A1A] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">3</div>
-                                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Upload Reviewed Excel</h3>
+                                    <div className="w-7 h-7 rounded-full bg-brand-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">3</div>
+                                    <h3 className="text-sm font-bold text-text uppercase tracking-wider">Upload Reviewed Excel</h3>
                                 </div>
 
                                 {/* ── Warning banner ── */}
-                                <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-4">
+                                <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 mb-4">
                                     <div className="flex items-start gap-2">
                                         <span className="text-sm mt-0.5">⚠️</span>
-                                        <p className="text-[11px] text-amber-700 leading-relaxed">
-                                            <strong className="text-amber-800">Strict Upload Mode:</strong> Uploading will <strong>replace all existing seating allocations</strong>. 
+                                        <p className="text-[11px] text-warning leading-relaxed">
+                                            <strong className="text-warning">Strict Upload Mode:</strong> Uploading will <strong>replace all existing seating allocations</strong>. 
                                             Exam slots and scheduled courses are preserved.
                                         </p>
                                     </div>
@@ -521,7 +533,7 @@ export default {
 
                                 <div
                                     className={`border-2 border-dashed rounded-xl p-7 text-center cursor-pointer transition-all duration-200 ${
-                                        dragOver ? 'border-[#8B1A1A] bg-red-50' : 'border-slate-300 bg-slate-50/50 hover:border-[#8B1A1A] hover:bg-red-50'
+                                        dragOver ? 'border-brand-500 bg-danger/10' : 'border-borderStrong bg-surface2 hover:border-brand-500 hover:bg-danger/10'
                                     }`}
                                     onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                                     onDragLeave={() => setDragOver(false)}
@@ -529,10 +541,10 @@ export default {
                                     onClick={() => fileInputRef.current?.click()}
                                 >
                                     <div className="text-3xl mb-1.5">{uploading ? '⏳' : '📂'}</div>
-                                    <p className="text-sm font-semibold text-slate-600">
+                                    <p className="text-sm font-semibold text-textMuted">
                                         {uploading ? 'Uploading & saving…' : 'Drop reviewed Excel here, or click to browse'}
                                     </p>
-                                    <p className="text-xs text-slate-400 mt-1">Only .xlsx accepted</p>
+                                    <p className="text-xs text-textFaint mt-1">Only .xlsx accepted</p>
                                     <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden"
                                         onChange={e => { handleUpload(e.target.files[0]); e.target.value = ''; }} />
                                 </div>
@@ -540,7 +552,7 @@ export default {
                                     disabled={uploading}
                                     onClick={() => fileInputRef.current?.click()}
                                     className={`mt-3 w-full py-3 text-white text-sm font-bold uppercase tracking-widest rounded-lg flex items-center justify-center gap-2 transition-all duration-200 ${
-                                        uploading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#8B1A1A] hover:bg-[#721515] hover:shadow-md cursor-pointer'
+                                        uploading ? 'bg-textFaint cursor-not-allowed' : 'bg-brand-500 hover:bg-brand-600 hover:shadow-md cursor-pointer'
                                     }`}
                                 >
                                     {uploading && <Spinner />}
@@ -553,9 +565,9 @@ export default {
                         <div className="flex flex-col gap-5">
 
                             {/* Generate card */}
-                            <div className="bg-gradient-to-br from-[#8B1A1A] to-[#a52422] rounded-xl p-5 shadow-lg text-white">
+                            <div className="bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl p-5 shadow-lg text-white">
                                 <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">2</div>
+                                    <div className="w-7 h-7 rounded-full bg-surface/20 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">2</div>
                                     <h3 className="text-sm font-bold uppercase tracking-wider">Generate Seating Plan</h3>
                                 </div>
                                 <p className="text-[13px] opacity-80 leading-relaxed mb-4">
@@ -564,7 +576,7 @@ export default {
                                 </p>
 
                                 {/* Per-slot readiness list */}
-                                <div className="bg-white/10 rounded-lg px-3 py-2.5 mb-4 text-xs">
+                                <div className="bg-surface/10 rounded-lg px-3 py-2.5 mb-4 text-xs">
                                     {slotsWithExams.length === 0 ? (
                                         <span className="opacity-70">No slots with exams yet.</span>
                                     ) : (
@@ -574,7 +586,7 @@ export default {
                                             return (
                                                 <div key={sl.slot_id} className="flex justify-between mb-1 items-center">
                                                     <span className="opacity-85">{formatDate(sl.exam_date)} · {formatTime(sl.start_time)}</span>
-                                                    <span className={`font-bold text-[11px] ${ok ? 'text-emerald-300' : 'text-red-300'}`}>
+                                                    <span className={`font-bold text-[11px] ${ok ? 'text-success' : 'text-danger'}`}>
                                                         {ok ? `${n} rooms ✓` : '⚠ no rooms'}
                                                     </span>
                                                 </div>
@@ -586,7 +598,7 @@ export default {
                                 <button
                                     disabled={generating || slotsWithExams.length === 0}
                                     onClick={handleGenerateExport}
-                                    className={`w-full py-3 bg-white text-[#8B1A1A] rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 ${
+                                    className={`w-full py-3 bg-surface text-brand-500 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 ${
                                         generating || slotsWithExams.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'
                                     }`}
                                 >
@@ -596,25 +608,25 @@ export default {
                             </div>
 
                             {/* Legend */}
-                            <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 p-4">
-                                <p className="text-xs font-bold tracking-widest uppercase text-slate-400 mb-3">Excel Lane Legend</p>
+                            <div className="bg-surface rounded-xl shadow-lg border border-border p-4">
+                                <p className="text-xs font-bold tracking-widest uppercase text-textFaint mb-3">Excel Lane Legend</p>
                                 {[
                                     ['bg-[#d9d2e9]', 'Purple', 'Undivided room'],
                                     ['bg-[#d9ead3]', 'Green',  'Giant course lane'],
                                     ['bg-[#fff2cc]', 'Yellow', 'Other courses lane'],
                                 ].map(([bgClass, label, desc]) => (
                                     <div key={label} className="flex items-center gap-2.5 mb-2">
-                                        <div className={`w-6 h-4 rounded border border-slate-200 flex-shrink-0 ${bgClass}`} />
-                                        <span className="text-[13px] font-semibold text-slate-700">{label}</span>
-                                        <span className="text-xs text-slate-400">{desc}</span>
+                                        <div className={`w-6 h-4 rounded border border-border flex-shrink-0 ${bgClass}`} />
+                                        <span className="text-[13px] font-semibold text-text">{label}</span>
+                                        <span className="text-xs text-textFaint">{desc}</span>
                                     </div>
                                 ))}
                             </div>
 
                             {/* Info */}
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                                <p className="text-xs font-bold text-emerald-700 mb-1.5">How it works</p>
-                                <ul className="text-xs text-emerald-800 leading-relaxed pl-4 list-disc">
+                            <div className="bg-success/10 border border-success/30 rounded-xl p-4">
+                                <p className="text-xs font-bold text-success mb-1.5">How it works</p>
+                                <ul className="text-xs text-success leading-relaxed pl-4 list-disc">
                                     <li>Each slot uses <strong>its own room list</strong></li>
                                 </ul>
                             </div>
@@ -627,34 +639,34 @@ export default {
                 ═══════════════════════════════════════════════════════════════════════ */}
             {showConfirm && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md mx-4 overflow-hidden">
+                    <div className="bg-surface rounded-2xl shadow-2xl border border-border w-full max-w-md mx-4 overflow-hidden">
 
                         {/* Modal Header */}
-                        <div className="bg-red-600 px-6 py-4">
+                        <div className="bg-danger px-6 py-4">
                             <h3 className="text-white text-base font-bold tracking-wide">⚠ Confirm Seating Reset</h3>
                         </div>
 
                         {/* Modal Body */}
                         <div className="px-6 py-5">
-                            <p className="text-sm text-slate-700 leading-relaxed mb-4">
-                                This will <strong className="text-red-600">permanently delete</strong> all existing seating allocations and replace them with the data from your uploaded file.
+                            <p className="text-sm text-text leading-relaxed mb-4">
+                                This will <strong className="text-danger">permanently delete</strong> all existing seating allocations and replace them with the data from your uploaded file.
                             </p>
-                            <ul className="text-sm text-slate-600 space-y-2 mb-5">
+                            <ul className="text-sm text-textMuted space-y-2 mb-5">
                                 <li className="flex items-center gap-2">
-                                    <span className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xs font-bold flex-shrink-0">×</span>
+                                    <span className="w-5 h-5 rounded-full bg-danger/15 flex items-center justify-center text-danger text-xs font-bold flex-shrink-0">×</span>
                                     All previous seating allocations
                                 </li>
                             </ul>
 
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-5">
-                                <p className="text-xs text-emerald-700">
+                            <div className="bg-success/10 border border-success/30 rounded-lg p-3 mb-5">
+                                <p className="text-xs text-success">
                                     <strong>✓ Preserved:</strong> Exam time slots and scheduled courses will NOT be deleted.
                                 </p>
                             </div>
 
                             {pendingFile && (
-                                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                                    <p className="text-xs text-slate-600">
+                                <div className="bg-surface2 border border-border rounded-lg p-3 shadow-sm">
+                                    <p className="text-xs text-textMuted">
                                         <strong>File:</strong> {pendingFile.name} ({(pendingFile.size / 1024).toFixed(1)} KB)
                                     </p>
                                 </div>
@@ -662,16 +674,16 @@ export default {
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+                        <div className="px-6 py-4 bg-surface2 border-t border-border flex items-center justify-end gap-3 shadow-sm">
                             <button
                                 onClick={handleCancelUpload}
-                                className="px-5 py-2 bg-white text-slate-700 text-xs font-bold uppercase tracking-wider rounded-lg border border-slate-300 hover:bg-slate-100 transition-all cursor-pointer"
+                                className="px-5 py-2 bg-surface text-text text-xs font-bold uppercase tracking-wider rounded-lg border border-borderStrong hover:bg-surface2 transition-all cursor-pointer shadow-sm"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleConfirmUpload}
-                                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer"
+                                className="px-5 py-2 bg-danger hover:bg-danger/90 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer"
                             >
                                 Yes, Reset & Upload
                             </button>

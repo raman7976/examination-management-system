@@ -67,6 +67,7 @@ export const resetSemesterData = ({ wipeRoster = false } = {}) =>
     API.delete(`/upload/reset${wipeRoster ? '?wipe_roster=true' : ''}`);
 export const getCourseList = (search = '') => API.get(`/upload/courses?search=${encodeURIComponent(search)}`);
 export const getEnrollmentList = (search = '') => API.get(`/upload/enrollments?search=${encodeURIComponent(search)}`);
+export const getEnrollmentMismatches = () => API.get('/upload/enrollment-mismatches');
 
 // Schedule Routes
 export const getExamSlots = () => API.get('/schedule/slots');
@@ -103,6 +104,7 @@ export const downloadCourseInstructorTemplate = ()         => API.get('/upload/c
 
 // Invigilator Scheduling Routes — exam periods
 export const getExamPeriods       = ()             => API.get('/invigilator-scheduling/exam-periods');
+export const getPeriodsOverview   = ()             => API.get('/invigilator-scheduling/periods-overview');
 export const createSemester       = (body)         => API.post('/invigilator-scheduling/semesters', body);
 export const activateExamPeriod   = (id)           => API.put(`/invigilator-scheduling/exam-periods/${id}/activate`);
 export const deleteExamPeriod     = (id)           => API.delete(`/invigilator-scheduling/exam-periods/${id}`);
@@ -113,6 +115,7 @@ export const updateRoleTargets            = (targets)             => API.put('/i
 export const getInvigilatorScheduleList   = (search = '')         => API.get(`/invigilator-scheduling/invigilators?search=${encodeURIComponent(search)}`);
 export const updateInvigilatorOverride    = (userId, body)        => API.put(`/invigilator-scheduling/invigilators/${userId}/override`, body);
 export const generateInvigilatorSchedule  = (body = {})           => API.post('/invigilator-scheduling/generate', body);
+export const previewInvigilatorSchedule   = (body = {})           => API.post('/invigilator-scheduling/generate-preview', body);
 export const getInvigilatorSchedule       = (slotId = '')         => API.get(`/invigilator-scheduling/schedule${slotId ? `?slot_id=${slotId}` : ''}`);
 export const getEligibleInvigilators      = (slotId, excludeId)   => API.get(`/invigilator-scheduling/eligible?slot_id=${slotId}${excludeId ? `&exclude_assignment_id=${excludeId}` : ''}`);
 export const addInvigilatorAssignment     = (body)                => API.post('/invigilator-scheduling/assignments', body);
@@ -120,5 +123,22 @@ export const reassignInvigilatorAssignment = (id, userId)         => API.put(`/i
 export const removeInvigilatorAssignment  = (id)                  => API.delete(`/invigilator-scheduling/assignments/${id}`);
 export const applyInvigilatorChanges      = (body)                => API.post('/invigilator-scheduling/apply-changes', body);
 export const clearInvigilatorSchedule     = (periodId)            => API.delete(`/invigilator-scheduling/schedule${periodId ? `?period_id=${periodId}` : ''}`);
+
+// User-self (used by the Profile tab — JWT only carries id/email/role, this
+// fills in employee_id + department + created_at).
+export const getMyProfile               = ()                 => API.get('/v1/user/me');
+
+// Invigilator self-service (faculty / phd_student / lab_staff only)
+export const getMyInvigilationSchedule  = ()                 => API.get('/invigilator-scheduling/my-schedule');
+export const getSwapEligibleTargets     = (id)               => API.get(`/invigilator-scheduling/swap-eligible?my_assignment_id=${id}`);
+export const createSwapRequest          = (body)             => API.post('/invigilator-scheduling/swap-requests', body);
+export const getIncomingSwapRequests    = ()                 => API.get('/invigilator-scheduling/swap-requests/incoming');
+export const getOutgoingSwapRequests    = (status = '')      => API.get(`/invigilator-scheduling/swap-requests/outgoing${status ? `?status=${status}` : ''}`);
+export const peerRespondToSwap          = (id, body)         => API.put(`/invigilator-scheduling/swap-requests/${id}/peer-respond`, body);
+export const cancelMySwapRequest        = (id)               => API.delete(`/invigilator-scheduling/swap-requests/${id}`);
+
+// Admin swap moderation
+export const adminListSwapRequests      = (status = 'all')   => API.get(`/invigilator-scheduling/swap-requests?status=${status}`);
+export const adminRespondToSwap         = (id, body)         => API.put(`/invigilator-scheduling/swap-requests/${id}/admin-respond`, body);
 
 export default API;
