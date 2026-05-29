@@ -9,7 +9,9 @@ const VALID_ROLES = ['faculty', 'phd_student', 'lab_staff'];
 //  (classroomId) during slot (slotId)? Used by add/reassign to preserve the
 //  ★ badge on chips when the new occupant also teaches there.
 // ─────────────────────────────────────────────────────────────────────────────
-async function isInstructorForRoom(connOrDb, userId, slotId, classroomId) {
+// Exported so the swap controller can re-evaluate the ★ badge for the NEW
+// occupant of each room after an approved swap.
+export async function isInstructorForRoom(connOrDb, userId, slotId, classroomId) {
     const c = connOrDb || db;
     const [rows] = await c.query(`
         SELECT 1
@@ -80,13 +82,19 @@ export const createSemester = async (req, res) => {
         }
         const midtermRow = rows.find(r => r.exam_type === 'midterm');
 
-        // S8: only flip the active period when at least one row was newly created.
-        // For a fully-existing semester, leave whatever was active alone — and
-        // seed role-target rows defensively (M2 prep) so the GET endpoint can
-        // drop its lazy-seed.
+        // Auto-activate is BOOTSTRAP-ONLY: flip the new midterm to active only
+        // when no other period is currently active. Otherwise creating a fresh
+        // semester silently hides the data of whatever was active before — that
+        // was the source of multiple "all my admin tabs went empty" reports.
+        // The admin can still opt-in to switching via the Exam Periods card
+        // in Registration after creation.
         if (newlyInserted > 0 && activate_midterm && midtermRow) {
-            await conn.query('UPDATE exam_periods SET is_active = 0');
-            await conn.query('UPDATE exam_periods SET is_active = 1 WHERE id = ?', [midtermRow.id]);
+            const [activeRows] = await conn.query(
+                'SELECT id FROM exam_periods WHERE is_active = 1 LIMIT 1'
+            );
+            if (activeRows.length === 0) {
+                await conn.query('UPDATE exam_periods SET is_active = 1 WHERE id = ?', [midtermRow.id]);
+            }
         }
 
         // Seed role-target rows (3 roles × 2 periods = 6 rows) — idempotent
@@ -117,6 +125,75 @@ export const createSemester = async (req, res) => {
     }
 };
 
+// GET /periods-overview — every period with its data counts.
+//
+// Drives the Registration tab's "where is my data?" overview: each row shows
+// slot / scheduled-exam / seating-plan / invigilator-assignment counts so the
+// admin can pick the right active period at a glance.
+//
+// Uses correlated subqueries rather than GROUP BY / LEFT JOIN aggregation —
+// the counts come from four different fact tables, and grouping all of them
+// together would explode row counts. With ~10 periods on the heaviest install
+// this stays well under 1 ms.
+export const getPeriodsOverview = async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT
+                p.id,
+                p.semester_label,
+                p.exam_type,
+                p.is_active,
+                p.created_at,
+                (SELECT COUNT(*) FROM exam_slots
+                  WHERE exam_period_id = p.id) AS slots,
+                (SELECT COUNT(*) FROM invigilator_assignments
+                  WHERE exam_period_id = p.id) AS invig_assignments,
+                (SELECT COUNT(*) FROM scheduled_exams se
+                  JOIN exam_slots es ON se.slot_id = es.id
+                  WHERE es.exam_period_id = p.id) AS scheduled_exams,
+                (SELECT COUNT(*) FROM individual_seating_plans isp
+                  JOIN seating_allocations sa ON isp.allocation_id = sa.id
+                  JOIN scheduled_exams se     ON sa.scheduled_exam_id = se.id
+                  JOIN exam_slots es          ON se.slot_id = es.id
+                  WHERE es.exam_period_id = p.id) AS seating_plans
+            FROM exam_periods p
+            ORDER BY
+                /* Primary: numeric start-year extracted from the label
+                   ("EVEN 2025-2026" → 2025). REGEXP_SUBSTR returns NULL for
+                   labels without a 4-digit year (e.g. the seeded "Current
+                   Semester"); CAST(NULL) → NULL, and NULLs sort last on DESC
+                   in MySQL, so legacy entries fall to the bottom. */
+                CAST(REGEXP_SUBSTR(p.semester_label, '[0-9]{4}') AS UNSIGNED) DESC,
+                /* Secondary: normalise label case for stable grouping inside
+                   a year — EVEN / ODD / SUMMER TERM end up in alphabetical
+                   order, which keeps related rows adjacent. */
+                UPPER(p.semester_label) ASC,
+                /* Tertiary: midterm above endterm within the same semester */
+                FIELD(p.exam_type, 'midterm', 'endterm') ASC
+        `);
+        // Normalise counts to Number — mysql2 returns COUNT(*) as a BigInt-like
+        // string for large values; small ones come back as numbers. Coerce so
+        // the frontend doesn't have to guess.
+        res.json({
+            success: true,
+            periods: rows.map(r => ({
+                id:                r.id,
+                semester_label:    r.semester_label,
+                exam_type:         r.exam_type,
+                is_active:         !!r.is_active,
+                created_at:        r.created_at,
+                slots:             Number(r.slots),
+                scheduled_exams:   Number(r.scheduled_exams),
+                seating_plans:     Number(r.seating_plans),
+                invig_assignments: Number(r.invig_assignments),
+            })),
+        });
+    } catch (err) {
+        console.error('getPeriodsOverview error:', err);
+        res.status(500).json({ success: false, message: 'Failed to load periods overview.' });
+    }
+};
+
 // PUT /exam-periods/:id/activate — atomic flip
 export const activateExamPeriod = async (req, res) => {
     const id = Number(req.params.id);
@@ -143,21 +220,85 @@ export const activateExamPeriod = async (req, res) => {
     }
 };
 
-// DELETE /exam-periods/:id — 409 if it has assignments
+// DELETE /exam-periods/:id
+//
+// Permanently removes a period AND everything period-scoped under it.
+// The FK chain is fully ON DELETE CASCADE all the way down (verified against
+// information_schema), so a single DELETE on exam_periods propagates to:
+//   exam_slots → scheduled_exams → seating_allocations → individual_seating_plans
+//   invigilator_assignments → invigilator_swap_requests
+//   invigilator_role_targets, invigilator_target_overrides
+//
+// Past Exams snapshots are NOT affected (they have no FK to live tables).
+//
+// Two safety guards:
+//   1. 409 if the period is currently active — force the admin to switch first.
+//   2. Pre-flight row counts are returned so the UI can show a "deleted N rows"
+//      receipt after the fact.
 export const deleteExamPeriod = async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ success: false, message: 'Invalid id.' });
+
+    const conn = await db.getConnection();
     try {
-        const [refs] = await db.query('SELECT COUNT(*) AS n FROM invigilator_assignments WHERE exam_period_id = ?', [id]);
-        if (Number(refs[0].n) > 0)
-            return res.status(409).json({ success: false, message: `Cannot delete — ${refs[0].n} assignment(s) still reference this period. Clear the schedule first.` });
-        const [r] = await db.query('DELETE FROM exam_periods WHERE id = ?', [id]);
-        if (r.affectedRows === 0)
+        await conn.beginTransaction();
+
+        // Verify it exists and capture its is_active flag.
+        const [rows] = await conn.query(
+            'SELECT id, semester_label, exam_type, is_active FROM exam_periods WHERE id = ? FOR UPDATE',
+            [id]
+        );
+        if (rows.length === 0) {
+            await conn.rollback();
             return res.status(404).json({ success: false, message: 'Period not found.' });
-        res.json({ success: true, message: 'Period deleted.' });
+        }
+        const period = rows[0];
+
+        if (period.is_active) {
+            await conn.rollback();
+            return res.status(409).json({
+                success: false,
+                message: 'Cannot delete the currently-active period. Activate a different period first.',
+            });
+        }
+
+        // Pre-flight: count what's about to vanish. The UI uses these numbers
+        // for the post-delete "deleted N rows" receipt.
+        const [[counts]] = await conn.query(`
+            SELECT
+                (SELECT COUNT(*) FROM exam_slots              WHERE exam_period_id = ?) AS slots,
+                (SELECT COUNT(*) FROM invigilator_assignments WHERE exam_period_id = ?) AS invig_assignments,
+                (SELECT COUNT(*) FROM scheduled_exams se JOIN exam_slots es ON se.slot_id = es.id
+                    WHERE es.exam_period_id = ?) AS scheduled_exams,
+                (SELECT COUNT(*) FROM individual_seating_plans isp
+                    JOIN seating_allocations sa ON isp.allocation_id = sa.id
+                    JOIN scheduled_exams se     ON sa.scheduled_exam_id = se.id
+                    JOIN exam_slots es          ON se.slot_id = es.id
+                    WHERE es.exam_period_id = ?) AS seating_plans,
+                (SELECT COUNT(*) FROM invigilator_swap_requests WHERE exam_period_id = ?) AS swap_requests
+        `, [id, id, id, id, id]);
+
+        // Single DELETE — CASCADE handles the rest.
+        await conn.query('DELETE FROM exam_periods WHERE id = ?', [id]);
+
+        await conn.commit();
+        res.json({
+            success: true,
+            message: `Period "${period.semester_label} / ${period.exam_type}" deleted.`,
+            deleted: {
+                slots:             Number(counts.slots),
+                scheduled_exams:   Number(counts.scheduled_exams),
+                seating_plans:     Number(counts.seating_plans),
+                invig_assignments: Number(counts.invig_assignments),
+                swap_requests:     Number(counts.swap_requests),
+            },
+        });
     } catch (err) {
+        await conn.rollback().catch(() => {});
         console.error('deleteExamPeriod error:', err);
-        res.status(500).json({ success: false, message: 'Failed to delete period.' });
+        res.status(500).json({ success: false, message: err.message || 'Failed to delete period.' });
+    } finally {
+        conn.release();
     }
 };
 
@@ -508,6 +649,7 @@ export const previewSchedule = async (req, res) => {
         }
         const enriched = assignments.map(a => ({
             ...a,
+            // is_course_instructor is already on `a` from the algorithm — keep it
             full_name:   userMap.get(a.user_id)?.full_name   || `User #${a.user_id}`,
             role:        userMap.get(a.user_id)?.role        || null,
             employee_id: userMap.get(a.user_id)?.employee_id || null,
@@ -587,9 +729,14 @@ export const getSchedule = async (req, res) => {
         const periodId = await resolveActivePeriod(null, req.query.period_id);
         const period = await loadPeriod(null, periodId);
 
-        const slotParams = [];
-        let slotWhere = '';
-        if (slot_id) { slotWhere = 'WHERE es.id = ?'; slotParams.push(Number(slot_id)); }
+        // Always scope slots by the active period. Without this filter the
+        // endpoint returned slots from EVERY period, so when the active period
+        // had no slots the UI rendered another period's slots underneath the
+        // active period's header — appearing to show data that wasn't really
+        // there. Optional `?slot_id=` narrows further (still inside the period).
+        const slotParams = [periodId];
+        let slotWhere = 'WHERE es.exam_period_id = ?';
+        if (slot_id) { slotWhere += ' AND es.id = ?'; slotParams.push(Number(slot_id)); }
 
         const [slots] = await db.query(
             `SELECT es.id AS slot_id, es.exam_date, es.exam_day, es.start_time, es.end_time

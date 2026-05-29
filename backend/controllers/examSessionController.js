@@ -1,4 +1,5 @@
 import db from '../config/mysql.js';
+import { resolveActivePeriod } from '../utils/periodResolver.js';
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  POST /api/seating/sessions/save
@@ -16,9 +17,18 @@ export const saveSession = async (req, res) => {
     try {
         await conn.beginTransaction();
 
-        // Gather ALL micro-seating data across all slots
+        // Resolve the active period: a "save" archives the CURRENT exam's seating.
+        // Without this scope the gather query would archive every period's data
+        // into one session — silently mixing midterm + endterm + old semesters.
+        const periodId = await resolveActivePeriod(conn, req.body.period_id);
+
+        // Gather seating data for the active period only. The courses JOIN matches
+        // on (course_code, semester_label) — `courses` has a composite PK so the
+        // single-column join would pick whichever copy of the course MySQL hits
+        // first, mislabelling course_name when the same course exists in multiple
+        // semesters.
         const [allSeating] = await conn.execute(`
-            SELECT 
+            SELECT
                 se.slot_id, es.exam_date, es.start_time, es.end_time,
                 isp.roll_number, st.name AS student_name, st.section_name,
                 se.course_code, c.course_name,
@@ -26,12 +36,16 @@ export const saveSession = async (req, res) => {
             FROM individual_seating_plans isp
             JOIN seating_allocations sa ON isp.allocation_id = sa.id
             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
-            JOIN courses c ON se.course_code = c.course_code
+            JOIN exam_slots es ON se.slot_id = es.id
+            JOIN exam_periods ep ON ep.id = es.exam_period_id
+            JOIN courses c
+              ON c.course_code = se.course_code
+             AND c.semester_label = ep.semester_label
             JOIN students st ON isp.roll_number = st.roll_number
             JOIN classrooms cl ON sa.classroom_id = cl.id
-            JOIN exam_slots es ON se.slot_id = es.id
+            WHERE es.exam_period_id = ?
             ORDER BY es.exam_date, es.start_time, cl.room_name
-        `);
+        `, [periodId]);
 
         if (allSeating.length === 0) {
             await conn.rollback();

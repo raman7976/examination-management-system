@@ -14,6 +14,22 @@ export const generateMicroPlan = async (req, res) => {
     try {
         await conn.beginTransaction();
 
+        // Resolve the semester of this slot's period — needed to scope
+        // course_enrollments correctly. Without this, the Zip algorithm
+        // would pull students enrolled in the same course code across
+        // every semester (since enrollments are per-semester rows).
+        const [slotPeriodRows] = await conn.execute(`
+            SELECT ep.id AS exam_period_id, ep.semester_label
+            FROM exam_slots es
+            JOIN exam_periods ep ON ep.id = es.exam_period_id
+            WHERE es.id = ?
+        `, [slot_id]);
+        if (slotPeriodRows.length === 0) {
+            await conn.rollback();
+            return res.status(404).json({ success: false, message: 'Slot not found.' });
+        }
+        const slotSemester = slotPeriodRows[0].semester_label;
+
         // 1. Fetch all seating allocations for the given slot
         const [allocations] = await conn.execute(`
             SELECT sa.id AS allocation_id, sa.classroom_id, sa.lane, sa.student_count, se.course_code
@@ -41,14 +57,17 @@ export const generateMicroPlan = async (req, res) => {
 
         // 3. For each allocation, fetch students, fetch chairs, and Zip them!
         for (const alloc of allocations) {
-            // First time we see a course in this slot, load its students ordered by roll_number
+            // First time we see a course in this slot, load its students ordered by roll_number.
+            // Scoped to the slot's own semester — same course code can exist in multiple
+            // semesters with different rosters, and mixing them would silently produce
+            // duplicate seating rows (same roll_number assigned twice).
             if (courseStudentOffset[alloc.course_code] === undefined) {
                 const [students] = await conn.execute(`
-                    SELECT ce.roll_number 
+                    SELECT ce.roll_number
                     FROM course_enrollments ce
-                    WHERE ce.course_code = ?
+                    WHERE ce.course_code = ? AND ce.semester_label = ?
                     ORDER BY ce.roll_number ASC
-                `, [alloc.course_code]);
+                `, [alloc.course_code, slotSemester]);
                 courseStudentOffset[alloc.course_code] = { students, index: 0 };
             }
 

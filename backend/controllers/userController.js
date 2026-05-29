@@ -65,6 +65,24 @@ export const sendOtp = async (req, res) => {
     }
 };
 
+// GET /v1/user/me — returns the full profile of the authenticated user.
+// Used by the Profile tab of the invigilator portal (which needs employee_id +
+// department + created_at) since the JWT only carries id / email / role.
+export const getMe = async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            `SELECT id, full_name, email, role, employee_id, department, created_at
+             FROM users WHERE id = ?`,
+            [req.user.id]
+        );
+        if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+        res.json({ success: true, user: rows[0] });
+    } catch (err) {
+        console.error('getMe error:', err);
+        res.status(500).json({ success: false, message: 'Failed to load profile.' });
+    }
+};
+
 export const setNewPassword = async (req, res) => {
     const { email, otp, newPassword } = req.body;
     try {

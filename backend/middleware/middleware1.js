@@ -34,3 +34,17 @@ export const requireAdmin = (req, res, next) => {
         return res.status(403).json({ success: false, message: 'Admin access required.' });
     next();
 };
+
+// Gate routes that should ONLY be reachable by an invigilator (faculty / phd_student /
+// lab_staff). Admins are explicitly bounced — they have their own dashboard endpoints
+// for the same data, so misrouting one here is a configuration smell worth surfacing.
+export const requireInvigilator = (req, res, next) => {
+    if (req.user?.role === 'admin')
+        return res.status(403).json({
+            success: false,
+            message: 'Invigilator access required (admins use the admin endpoints).',
+        });
+    if (!['faculty', 'phd_student', 'lab_staff'].includes(req.user?.role))
+        return res.status(403).json({ success: false, message: 'Invigilator access required.' });
+    next();
+};
