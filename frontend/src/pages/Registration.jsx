@@ -167,256 +167,228 @@ export default function Registration() {
         </p>
       </div>
 
-      {/* Two-column layout (lg+ only). The left column holds the action cards —
-          Exam Periods, Manual, Bulk Upload — stacked vertically. The right
-          column holds the wider Registered Invigilators table.
-          Default `items-stretch` (no items-start here): both columns stretch
-          to match the taller one. Combined with `h-full` on the right card,
-          the table card visually fills the empty space when the left column
-          is taller than the table's natural height. On screens below lg the
-          grid collapses to a single column. */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Zone 1 — Exam Periods: full width */}
+      <ExamPeriodsCard />
 
-        {/* ─────── LEFT COLUMN ─────── */}
-        <div className="lg:col-span-5 space-y-6">
-          <ExamPeriodsCard />
+      {/* Zone 2 — Manual Registration + Bulk Upload side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          {/* ── Manual registration ── */}
-      <Card padding="md">
-        <SectionHeader icon={<UserPlus size={16} />} title="Manual Registration" />
+        {/* ── Manual registration ── */}
+        <Card padding="md">
+          <SectionHeader icon={<UserPlus size={16} />} title="Manual Registration" />
 
-        <form onSubmit={handleFormSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          <Input
-            label="Employee ID (optional)"
-            value={form.employee_id}
-            onChange={(e) => setForm((p) => ({ ...p, employee_id: e.target.value }))}
-            placeholder="EMP001"
-          />
-          <Input
-            label="Full name *"
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            placeholder="Dr. Rajesh Kumar"
-          />
-          <Input
-            label="Email *"
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-            placeholder="rajesh.kumar@lnmiit.ac.in"
-          />
-          <Select
-            label="Role *"
-            value={form.role}
-            onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
-            options={ROLE_OPTIONS}
-          />
-          <div className="sm:col-span-2">
+          <form onSubmit={handleFormSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <Input
-              label="Department *"
-              value={form.department}
-              onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
-              placeholder="Computer Science & Engineering"
+              label="Employee ID (optional)"
+              value={form.employee_id}
+              onChange={(e) => setForm((p) => ({ ...p, employee_id: e.target.value }))}
+              placeholder="EMP001"
             />
-          </div>
-          <div className="sm:col-span-2 flex items-center gap-3 flex-wrap">
-            <Button type="submit" variant="primary" loading={formLoading}>
-              Register
-            </Button>
-            {formError && (
-              <span className="text-xs text-danger flex items-center gap-1.5">
-                <CircleAlert size={13} /> {formError}
+            <Input
+              label="Full name *"
+              value={form.name}
+              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+              placeholder="Dr. Rajesh Kumar"
+            />
+            <Input
+              label="Email *"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+              placeholder="rajesh.kumar@lnmiit.ac.in"
+            />
+            <Select
+              label="Role *"
+              value={form.role}
+              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+              options={ROLE_OPTIONS}
+            />
+            <div className="sm:col-span-2">
+              <Input
+                label="Department *"
+                value={form.department}
+                onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                placeholder="Computer Science & Engineering"
+              />
+            </div>
+            <div className="sm:col-span-2 flex items-center gap-3 flex-wrap">
+              <Button type="submit" variant="primary" loading={formLoading}>
+                Register
+              </Button>
+              {formError && (
+                <span className="text-xs text-danger flex items-center gap-1.5">
+                  <CircleAlert size={13} /> {formError}
+                </span>
+              )}
+            </div>
+          </form>
+        </Card>
+
+        {/* ── Bulk upload ── */}
+        <Card padding="md">
+          <SectionHeader icon={<Upload size={16} />} title="Bulk Upload" />
+
+          <p className="text-xs text-textFaint mt-1.5">
+            Upload an <strong className="text-textMuted">.xlsx</strong> file with columns:&nbsp;
+            {['employee_id', 'name', 'email', 'role', 'department'].map((c, i) => (
+              <span key={c}>
+                <code className="bg-surface2 text-textMuted px-1.5 py-0.5 rounded font-mono text-[10px]">{c}</code>
+                {i < 4 ? ', ' : ''}
               </span>
-            )}
-          </div>
-        </form>
-      </Card>
-
-      {/* ── Bulk upload ── */}
-      <Card padding="md">
-        <SectionHeader icon={<Upload size={16} />} title="Bulk Upload" />
-
-        <p className="text-xs text-textFaint mt-1.5">
-          Upload an <strong className="text-textMuted">.xlsx</strong> file with columns:&nbsp;
-          {['employee_id', 'name', 'email', 'role', 'department'].map((c, i) => (
-            <span key={c}>
-              <code className="bg-surface2 text-textMuted px-1.5 py-0.5 rounded font-mono text-[10px]">{c}</code>
-              {i < 4 ? ', ' : ''}
-            </span>
-          ))}
-        </p>
-
-        <label
-          htmlFor="bulk-file-input"
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) setBulkFile(f);
-          }}
-          className={[
-            'mt-4 block w-full rounded-lg border-2 border-dashed cursor-pointer transition-colors duration-base ease-out',
-            'px-5 py-6 text-center',
-            dragOver
-              ? 'border-brand-500 bg-brand-500/5'
-              : 'border-border bg-surface2 hover:border-brand-500/40',
-          ].join(' ')}
-        >
-          <input
-            id="bulk-file-input"
-            type="file"
-            accept=".xlsx"
-            onChange={(e) => { if (e.target.files[0]) setBulkFile(e.target.files[0]); }}
-            disabled={bulkLoading}
-            className="sr-only"
-          />
-          <Upload size={20} className="mx-auto text-textFaint mb-1.5" />
-          <p className="text-sm font-medium text-textMuted">
-            {bulkFile
-              ? <>Selected: <span className="text-text font-semibold">{bulkFile.name}</span>{' '}
-                <span className="text-textFaint">({(bulkFile.size / 1024).toFixed(1)} KB)</span></>
-              : 'Drag a file here, or click to browse'}
+            ))}
           </p>
-        </label>
 
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <Button onClick={handleBulkUpload} disabled={!bulkFile} loading={bulkLoading} variant="primary">
-            Upload
-          </Button>
-          <Button onClick={handleDownloadTemplate} variant="secondary" iconLeft={<Download size={14} />}>
-            Template
-          </Button>
-        </div>
+          <label
+            htmlFor="bulk-file-input"
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) setBulkFile(f);
+            }}
+            className={[
+              'mt-4 block w-full rounded-lg border-2 border-dashed cursor-pointer transition-colors duration-base ease-out',
+              'px-5 py-6 text-center',
+              dragOver
+                ? 'border-brand-500 bg-brand-500/5'
+                : 'border-border bg-surface2 hover:border-brand-500/40',
+            ].join(' ')}
+          >
+            <input
+              id="bulk-file-input"
+              type="file"
+              accept=".xlsx"
+              onChange={(e) => { if (e.target.files[0]) setBulkFile(e.target.files[0]); }}
+              disabled={bulkLoading}
+              className="sr-only"
+            />
+            <Upload size={20} className="mx-auto text-textFaint mb-1.5" />
+            <p className="text-sm font-medium text-textMuted">
+              {bulkFile
+                ? <>Selected: <span className="text-text font-semibold">{bulkFile.name}</span>{' '}
+                  <span className="text-textFaint">({(bulkFile.size / 1024).toFixed(1)} KB)</span></>
+                : 'Drag a file here, or click to browse'}
+            </p>
+          </label>
 
-        {bulkResults && bulkResults.errors.length > 0 && (
-          <div className="mt-4 overflow-x-auto">
-            <p className="text-xs font-semibold text-textMuted mb-1.5">Rows that failed</p>
-            <table className="text-xs w-full">
-              <thead>
-                <tr className="text-left text-textFaint border-b border-border">
-                  <th className="py-1.5 pr-4 font-semibold">Row</th>
-                  <th className="py-1.5 pr-4 font-semibold">Email</th>
-                  <th className="py-1.5 font-semibold">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bulkResults.errors.map((e, i) => (
-                  <tr key={i} className="border-b border-border/60">
-                    <td className="py-1.5 pr-4 text-textFaint">{e.row}</td>
-                    <td className="py-1.5 pr-4 text-textMuted">{e.email}</td>
-                    <td className="py-1.5 text-danger">{e.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <Button onClick={handleBulkUpload} disabled={!bulkFile} loading={bulkLoading} variant="primary">
+              Upload
+            </Button>
+            <Button onClick={handleDownloadTemplate} variant="secondary" iconLeft={<Download size={14} />}>
+              Template
+            </Button>
           </div>
-        )}
-      </Card>
 
-        </div>
-        {/* ─────── /LEFT COLUMN ─────── */}
-
-        {/* ─────── RIGHT COLUMN — wide table ─────── */}
-        {/* `lg:self-start` opts out of the grid's stretch behaviour so this
-            column doesn't try to match the (potentially shorter) left column's
-            height. `lg:sticky lg:top-0` then pins it to the top of the main
-            scroll area so it stays in view while the left column scrolls.
-            The explicit `lg:h-[calc(100vh-9rem)]` is the missing constraint
-            that makes `overflow-y-auto` actually engage — without a hard
-            ceiling the table grew to its natural 200+ row height and never
-            scrolled. The 9rem allowance covers header (3.5rem) + content
-            padding (1.5rem) + page header (~4rem). */}
-        <div className="lg:col-span-7 lg:self-start lg:sticky lg:top-0 lg:h-[calc(100vh-9rem)]">
-
-          {/* ── Registered invigilators table ── */}
-          <Card padding="md" className="h-full flex flex-col">
-            <div className="flex items-center justify-between gap-3">
-              <SectionHeader icon={<Users size={16} />} title="Registered Invigilators" />
-          <span className="text-xs text-textFaint">{invigilators.length} total</span>
-        </div>
-
-        <div className="mt-3 max-w-xs">
-          <Input
-            placeholder="Search by name, email, department…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            icon={<Search size={14} />}
-          />
-        </div>
-
-        {/* Table area expands to fill the card; scrolls internally if rows
-            exceed the visible height. `min-h-0` is required for the inner
-            overflow to engage (flex children default to min-height:auto). */}
-        <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
-          {tableLoading ? (
-            <Skeleton lines={4} height="h-8" />
-          ) : invigilators.length === 0 ? (
-            <p className="text-sm text-textFaint">No invigilators match this search.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+          {bulkResults && bulkResults.errors.length > 0 && (
+            <div className="mt-4 overflow-x-auto">
+              <p className="text-xs font-semibold text-textMuted mb-1.5">Rows that failed</p>
+              <table className="text-xs w-full">
                 <thead>
                   <tr className="text-left text-textFaint border-b border-border">
-                    <th className="pb-2 pr-4 font-semibold">Emp ID</th>
-                    <th className="pb-2 pr-4 font-semibold">Name</th>
-                    <th className="pb-2 pr-4 font-semibold">Email</th>
-                    <th className="pb-2 pr-4 font-semibold">Role</th>
-                    <th className="pb-2 pr-4 font-semibold">Department</th>
-                    <th className="pb-2 pr-4 font-semibold">Status</th>
-                    <th className="pb-2 font-semibold">Action</th>
+                    <th className="py-1.5 pr-4 font-semibold">Row</th>
+                    <th className="py-1.5 pr-4 font-semibold">Email</th>
+                    <th className="py-1.5 font-semibold">Reason</th>
                   </tr>
                 </thead>
-                <motion.tbody variants={stagger} initial="initial" animate="animate">
-                  {invigilators.map((inv) => (
-                    <motion.tr
-                      key={inv.id}
-                      variants={slideUp}
-                      className="border-b border-border/60 hover:bg-surface2/60 transition-colors"
-                    >
-                      <td className="py-2 pr-4 font-mono text-textFaint">{inv.employee_id || '—'}</td>
-                      <td className="py-2 pr-4 font-semibold text-text">{inv.full_name}</td>
-                      <td className="py-2 pr-4 text-textMuted">{inv.email}</td>
-                      <td className="py-2 pr-4 text-textMuted">{ROLE_LABELS[inv.role] || inv.role}</td>
-                      <td className="py-2 pr-4 text-textMuted">{inv.department || '—'}</td>
-                      <td className="py-2 pr-4">
-                        <StatusPill needsActivation={!!inv.needs_activation} />
-                      </td>
-                      <td className="py-2">
-                        {deleteConfirmId === inv.id ? (
-                          <span className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleDelete(inv.id)}
-                              className="text-danger font-semibold hover:underline cursor-pointer">
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirmId(null)}
-                              className="text-textFaint hover:underline cursor-pointer">
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setDeleteConfirmId(inv.id)}
-                            className="text-textFaint hover:text-danger transition-colors cursor-pointer">
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </motion.tr>
+                <tbody>
+                  {bulkResults.errors.map((e, i) => (
+                    <tr key={i} className="border-b border-border/60">
+                      <td className="py-1.5 pr-4 text-textFaint">{e.row}</td>
+                      <td className="py-1.5 pr-4 text-textMuted">{e.email}</td>
+                      <td className="py-1.5 text-danger">{e.reason}</td>
+                    </tr>
                   ))}
-                </motion.tbody>
+                </tbody>
               </table>
             </div>
           )}
-            </div>
-          </Card>
-        </div>
-        {/* ─────── /RIGHT COLUMN ─────── */}
+        </Card>
 
       </div>
+
+      {/* Zone 3 — Registered Invigilators: full width at the bottom */}
+      <Card padding="md">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <SectionHeader icon={<Users size={16} />} title="Registered Invigilators" />
+          <div className="flex items-center gap-3">
+            <div className="w-72">
+              <Input
+                placeholder="Search by name, email, department…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                icon={<Search size={14} />}
+              />
+            </div>
+            <span className="text-xs text-textFaint whitespace-nowrap">{invigilators.length} total</span>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto max-h-[520px] overflow-y-auto">
+          {tableLoading ? (
+            <Skeleton lines={4} height="h-8" />
+          ) : invigilators.length === 0 ? (
+            <p className="text-sm text-textFaint py-4">No invigilators match this search.</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-surface z-10">
+                <tr className="text-left text-textFaint border-b border-border">
+                  <th className="pb-2 pr-4 font-semibold">Emp ID</th>
+                  <th className="pb-2 pr-4 font-semibold">Name</th>
+                  <th className="pb-2 pr-4 font-semibold">Email</th>
+                  <th className="pb-2 pr-4 font-semibold">Role</th>
+                  <th className="pb-2 pr-4 font-semibold">Department</th>
+                  <th className="pb-2 pr-4 font-semibold">Status</th>
+                  <th className="pb-2 font-semibold">Action</th>
+                </tr>
+              </thead>
+              <motion.tbody variants={stagger} initial="initial" animate="animate">
+                {invigilators.map((inv) => (
+                  <motion.tr
+                    key={inv.id}
+                    variants={slideUp}
+                    className="border-b border-border/60 hover:bg-surface2/60 transition-colors"
+                  >
+                    <td className="py-2 pr-4 font-mono text-textFaint">{inv.employee_id || '—'}</td>
+                    <td className="py-2 pr-4 font-semibold text-text">{inv.full_name}</td>
+                    <td className="py-2 pr-4 text-textMuted">{inv.email}</td>
+                    <td className="py-2 pr-4 text-textMuted">{ROLE_LABELS[inv.role] || inv.role}</td>
+                    <td className="py-2 pr-4 text-textMuted">{inv.department || '—'}</td>
+                    <td className="py-2 pr-4">
+                      <StatusPill needsActivation={!!inv.needs_activation} />
+                    </td>
+                    <td className="py-2">
+                      {deleteConfirmId === inv.id ? (
+                        <span className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleDelete(inv.id)}
+                            className="text-danger font-semibold hover:underline cursor-pointer">
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="text-textFaint hover:underline cursor-pointer">
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirmId(inv.id)}
+                          className="text-textFaint hover:text-danger transition-colors cursor-pointer">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </motion.tr>
+                ))}
+              </motion.tbody>
+            </table>
+          )}
+        </div>
+      </Card>
+
     </motion.div>
   );
 }

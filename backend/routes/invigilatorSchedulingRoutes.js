@@ -22,6 +22,7 @@ import {
 } from '../controllers/invigilatorSchedulingController.js';
 import {
     getMySchedule,
+    getFullSchedule,
     listSwapEligibleTargets,
     createSwapRequest,
     listIncomingSwapRequests,
@@ -35,61 +36,58 @@ import {
 const router = express.Router();
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  Two sub-routers under the same mount prefix (/api/invigilator-scheduling).
-//  They never collide because their URLs differ. Splitting lets us attach
-//  different role middleware (requireAdmin vs requireInvigilator) per group
-//  without per-route boilerplate.
+//  All endpoints live under one mount prefix (/api/invigilator-scheduling) but
+//  fall into two access tiers. Guards are attached PER ROUTE (not router-wide):
+//  a router-level `requireAdmin` would 403 every request — including invigilator
+//  paths — before route matching could fall through to the invigilator handler.
 // ═════════════════════════════════════════════════════════════════════════════
 
+const adminOnly = [protect, requireAdmin];
+const inviOnly  = [protect, requireInvigilator];
+
 // ─── Admin-only routes ──────────────────────────────────────────────────────
-const adminRouter = express.Router();
-adminRouter.use(protect, requireAdmin);
 
 // Exam-period CRUD
-adminRouter.get('/exam-periods',                listExamPeriods);
-adminRouter.get('/periods-overview',            getPeriodsOverview);  // per-period data counts
-adminRouter.post('/semesters',                  createSemester);     // creates midterm + endterm pair
-adminRouter.put('/exam-periods/:id/activate',   activateExamPeriod);
-adminRouter.delete('/exam-periods/:id',         deleteExamPeriod);
+router.get   ('/exam-periods',              adminOnly, listExamPeriods);
+router.get   ('/periods-overview',          adminOnly, getPeriodsOverview);  // per-period data counts
+router.post  ('/semesters',                 adminOnly, createSemester);      // creates midterm + endterm pair
+router.put   ('/exam-periods/:id/activate', adminOnly, activateExamPeriod);
+router.delete('/exam-periods/:id',          adminOnly, deleteExamPeriod);
 
 // Role targets
-adminRouter.get('/role-targets', getRoleTargets);
-adminRouter.put('/role-targets', updateRoleTargets);
+router.get('/role-targets', adminOnly, getRoleTargets);
+router.put('/role-targets', adminOnly, updateRoleTargets);
 
 // Invigilator list + per-user overrides
-adminRouter.get('/invigilators',                  getInvigilatorList);
-adminRouter.put('/invigilators/:user_id/override', updateOverride);
+router.get('/invigilators',                   adminOnly, getInvigilatorList);
+router.put('/invigilators/:user_id/override', adminOnly, updateOverride);
 
 // Schedule generation, read, batched edits, wipe
-adminRouter.post('/generate',         generateSchedule);   // legacy: generate + save in one call
-adminRouter.post('/generate-preview', previewSchedule);    // run algorithm in-memory, no DB write
-adminRouter.post('/apply-changes',    applyChanges);
-adminRouter.get('/schedule',          getSchedule);
-adminRouter.delete('/schedule',       clearSchedule);
+router.post  ('/generate',         adminOnly, generateSchedule);   // legacy: generate + save in one call
+router.post  ('/generate-preview', adminOnly, previewSchedule);    // run algorithm in-memory, no DB write
+router.post  ('/apply-changes',    adminOnly, applyChanges);
+router.get   ('/schedule',         adminOnly, getSchedule);
+router.delete('/schedule',         adminOnly, clearSchedule);
 
 // Helpers / per-row edits
-adminRouter.get('/eligible',                  getEligibleForSlot);
-adminRouter.post('/assignments',              addAssignment);
-adminRouter.put('/assignments/:id/reassign',  reassignAssignment);
-adminRouter.delete('/assignments/:id',        removeAssignment);
+router.get   ('/eligible',                 adminOnly, getEligibleForSlot);
+router.post  ('/assignments',              adminOnly, addAssignment);
+router.put   ('/assignments/:id/reassign', adminOnly, reassignAssignment);
+router.delete('/assignments/:id',          adminOnly, removeAssignment);
 
-// Swap moderation
-adminRouter.get('/swap-requests',                    listSwapRequestsAdmin);
-adminRouter.put('/swap-requests/:id/admin-respond',  adminRespondToSwap);
+// Swap moderation (admin)
+router.get('/swap-requests',                   adminOnly, listSwapRequestsAdmin);
+router.put('/swap-requests/:id/admin-respond', adminOnly, adminRespondToSwap);
 
 // ─── Invigilator-only routes (faculty / phd_student / lab_staff) ────────────
-const inviRouter = express.Router();
-inviRouter.use(protect, requireInvigilator);
 
-inviRouter.get   ('/my-schedule',                       getMySchedule);
-inviRouter.get   ('/swap-eligible',                     listSwapEligibleTargets);
-inviRouter.post  ('/swap-requests',                     createSwapRequest);
-inviRouter.get   ('/swap-requests/incoming',            listIncomingSwapRequests);
-inviRouter.get   ('/swap-requests/outgoing',            listOutgoingSwapRequests);
-inviRouter.put   ('/swap-requests/:id/peer-respond',    peerRespondToSwap);
-inviRouter.delete('/swap-requests/:id',                 cancelOwnSwapRequest);
-
-router.use(adminRouter);
-router.use(inviRouter);
+router.get   ('/my-schedule',                    inviOnly, getMySchedule);
+router.get   ('/full-schedule',                  inviOnly, getFullSchedule);   // whole grid, read-only
+router.get   ('/swap-eligible',                  inviOnly, listSwapEligibleTargets);
+router.post  ('/swap-requests',                  inviOnly, createSwapRequest);
+router.get   ('/swap-requests/incoming',         inviOnly, listIncomingSwapRequests);
+router.get   ('/swap-requests/outgoing',         inviOnly, listOutgoingSwapRequests);
+router.put   ('/swap-requests/:id/peer-respond', inviOnly, peerRespondToSwap);
+router.delete('/swap-requests/:id',              inviOnly, cancelOwnSwapRequest);
 
 export default router;

@@ -110,7 +110,12 @@ export default function OutgoingRequests() {
                     {new Date(r.created_at).toLocaleString()}
                   </td>
                   <td className="p-3">
-                    <div className="font-semibold text-text text-sm">{r.target.full_name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-text text-sm">{r.target.full_name}</span>
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${r.request_type === 'cover' ? 'bg-warning/15 text-warning' : 'bg-brand-500/15 text-brand-500'}`}>
+                        {r.request_type === 'cover' ? 'Cover' : 'Swap'}
+                      </span>
+                    </div>
                     <div className="text-[11px] text-textFaint">{ROLE_LABEL[r.target.role] || r.target.role}</div>
                   </td>
                   <td className="p-3">
@@ -119,9 +124,15 @@ export default function OutgoingRequests() {
                     <div className="text-[11px] text-textMuted">{r.requester.room_name}</div>
                   </td>
                   <td className="p-3">
-                    <div className="text-xs text-text">{fmtDate(r.target.exam_date)}</div>
-                    <div className="font-mono text-[11px] text-textMuted">{fmtTime(r.target.start_time)}–{fmtTime(r.target.end_time)}</div>
-                    <div className="text-[11px] text-textMuted">{r.target.room_name}</div>
+                    {r.request_type === 'cover' ? (
+                      <span className="text-[11px] text-textFaint italic">They cover mine</span>
+                    ) : (
+                      <>
+                        <div className="text-xs text-text">{fmtDate(r.target.exam_date)}</div>
+                        <div className="font-mono text-[11px] text-textMuted">{fmtTime(r.target.start_time)}–{fmtTime(r.target.end_time)}</div>
+                        <div className="text-[11px] text-textMuted">{r.target.room_name}</div>
+                      </>
+                    )}
                   </td>
                   <td className="p-3">
                     <StatusBadge status={r.status} />

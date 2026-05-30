@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import { getSwapEligibleTargets, createSwapRequest } from '../../api/api.js';
+import { useMemo, useState } from 'react';
+import { createSwapRequest } from '../../api/api.js';
 
 const fmtTime = (t) => (t ? String(t).slice(0, 5) : '');
 const fmtDate = (d) =>
@@ -8,78 +8,97 @@ const fmtDate = (d) =>
 const ROLE_LABEL = { faculty: 'Faculty', phd_student: 'PhD Student', lab_staff: 'Lab Staff' };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Modal: pick another invigilator's duty to swap into.
+//  Swap / Cover modal — TARGET-FIRST.
 //
-//  Two-step UX:
-//    1. Pick a target from the eligible list (server-side feasibility filtered).
-//    2. Confirm step shows BOTH sides side-by-side, with an optional note.
+//  Opened by clicking another invigilator's chip in the grid. The clicked
+//  person (`target`) is fixed. Two modes:
+//
+//   • SWAP  — a two-way trade. I give up one of MY duties and take the target's
+//     clicked duty in exchange. Both people keep one duty each.
+//
+//   • COVER — I hand one of MY duties entirely to the target. They do both
+//     their own duty AND mine; I do nothing for that slot, and my duty becomes
+//     "due" — the next exam period's generation gives me one extra to balance.
+//
+//  Either way the requester chooses which of THEIR OWN duties is involved.
+//  On submit a request is created (pending_peer). Nothing on the schedule
+//  changes until the peer AND the admin both approve.
 // ─────────────────────────────────────────────────────────────────────────────
-export default function SwapRequestModal({ duty, onClose, onSuccess }) {
-  const [eligible, setEligible] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+export default function SwapRequestModal({ target, myDuties = [], onClose, onSuccess }) {
+  const [mode, setMode] = useState('swap'); // 'swap' | 'cover'
 
-  const [filter, setFilter] = useState('');
-  const [picked, setPicked] = useState(null);
+  // Can't offer the very duty we're targeting; everything else is fair game
+  // (backend re-validates feasibility and returns a clear error).
+  const offerable = useMemo(
+    () => myDuties.filter((d) => d.assignment_id !== target.assignment_id),
+    [myDuties, target.assignment_id]
+  );
+
+  const [picked, setPicked] = useState(offerable.length === 1 ? offerable[0] : null);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await getSwapEligibleTargets(duty.assignment_id);
-        if (!mounted) return;
-        setEligible(res.data?.eligible || []);
-      } catch (err) {
-        if (!mounted) return;
-        setError(err.response?.data?.message || 'Failed to load swap targets.');
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [duty.assignment_id]);
-
-  const filtered = useMemo(() => {
-    if (!filter.trim()) return eligible;
-    const q = filter.toLowerCase();
-    return eligible.filter((e) =>
-      [e.other_user?.full_name, e.other_user?.employee_id, e.room_name, e.course_codes, e.exam_day]
-        .filter(Boolean).join(' ').toLowerCase().includes(q)
-    );
-  }, [eligible, filter]);
+  const [error, setError] = useState(null);
 
   const submit = async () => {
     if (!picked) return;
     setSubmitting(true);
+    setError(null);
     try {
-      await createSwapRequest({
-        requester_assignment_id: duty.assignment_id,
-        target_assignment_id:    picked.assignment_id,
-        note: note.trim() || undefined,
-      });
+      if (mode === 'cover') {
+        await createSwapRequest({
+          request_type: 'cover',
+          requester_assignment_id: picked.assignment_id,
+          target_user_id: target.user_id,
+          note: note.trim() || undefined,
+        });
+      } else {
+        await createSwapRequest({
+          request_type: 'swap',
+          requester_assignment_id: picked.assignment_id,
+          target_assignment_id: target.assignment_id,
+          note: note.trim() || undefined,
+        });
+      }
       onSuccess?.();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send swap request.');
+      setError(err.response?.data?.message || 'Failed to send request.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const TabBtn = ({ value, label, sub }) => {
+    const active = mode === value;
+    return (
+      <button
+        onClick={() => setMode(value)}
+        className={`flex-1 text-left px-4 py-3 rounded-lg border transition-all cursor-pointer ${
+          active
+            ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500'
+            : 'border-border bg-surface2 hover:border-brand-500/50'
+        }`}
+      >
+        <div className={`text-sm font-bold ${active ? 'text-brand-500' : 'text-text'}`}>{label}</div>
+        <div className="text-[11px] text-textFaint mt-0.5">{sub}</div>
+      </button>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-surface rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col"
+        className="bg-surface rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-brand-500">Request a Swap</h2>
+            <h2 className="text-lg font-bold text-brand-500">
+              {mode === 'cover' ? 'Ask Someone to Cover' : 'Request a Swap'}
+            </h2>
             <p className="text-xs text-textMuted mt-0.5">
-              Your duty: {fmtDate(duty.exam_date)} · {fmtTime(duty.start_time)}–{fmtTime(duty.end_time)} · {duty.room_name}
+              with <b className="text-text">{target.full_name}</b>
+              {target.employee_id ? ` · ${target.employee_id}` : ''}
             </p>
           </div>
           <button onClick={onClose} className="text-textFaint hover:text-text text-2xl leading-none">×</button>
@@ -88,139 +107,107 @@ export default function SwapRequestModal({ duty, onClose, onSuccess }) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {error && (
-            <div className="bg-danger/10 border border-danger/30 text-danger rounded-lg px-3 py-2 text-sm mb-3">
+            <div className="bg-danger/10 border border-danger/30 text-danger rounded-lg px-3 py-2 text-sm mb-4">
               {error}
             </div>
           )}
 
-          {!picked ? (
-            <>
-              <div className="mb-3 flex items-center gap-2">
-                <input
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Search by invigilator, room, course, day…"
-                  className="flex-1 bg-surface2 border border-border text-text rounded-lg p-2.5 text-sm focus:outline-none focus:border-brand-500 shadow-sm"
-                />
-                <span className="text-xs text-textFaint">{filtered.length} of {eligible.length}</span>
+          {/* Mode toggle */}
+          <div className="flex gap-2 mb-4">
+            <TabBtn value="swap" label="Swap duties" sub="Trade one of mine for theirs" />
+            <TabBtn value="cover" label="They cover mine" sub="Give my duty away (becomes due)" />
+          </div>
+
+          {/* Target's duty — only meaningful for a swap */}
+          {mode === 'swap' && (
+            <div className="border border-brand-500/30 rounded-lg p-3 bg-brand-500/5 mb-4">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-brand-500 mb-1">
+                {target.full_name}&apos;s duty — you would take this
               </div>
+              <div className="text-sm font-semibold text-text">{fmtDate(target.exam_date)}</div>
+              <div className="font-mono text-xs text-textMuted">{fmtTime(target.start_time)}–{fmtTime(target.end_time)}</div>
+              <div className="text-sm text-text mt-1">
+                {target.room_name}
+                <span className="text-[11px] text-textFaint"> · {ROLE_LABEL[target.role] || target.role}</span>
+              </div>
+              <div className="text-[11px] text-textFaint">{target.course_codes || '—'}</div>
+            </div>
+          )}
 
-              {loading ? (
-                <div className="text-center text-textFaint p-10">Loading eligible swap targets…</div>
-              ) : filtered.length === 0 ? (
-                <div className="text-center text-textMuted p-10">
-                  {eligible.length === 0
-                    ? 'No invigilators are eligible to swap with this duty.'
-                    : 'No matches for your filter.'}
-                </div>
-              ) : (
-                <div className="border border-border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-surface2 text-[11px] uppercase text-textMuted border-b border-border shadow-sm">
-                      <tr>
-                        <th className="p-2.5 text-left font-bold">Invigilator</th>
-                        <th className="p-2.5 text-left font-bold">Their Duty</th>
-                        <th className="p-2.5 text-left font-bold">Room / Courses</th>
-                        <th className="p-2.5 text-center font-bold"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((e) => (
-                        <tr key={e.assignment_id} className="border-b border-border hover:bg-brand-500/5/40 transition-colors">
-                          <td className="p-2.5">
-                            <div className="font-semibold text-text text-sm">{e.other_user.full_name}</div>
-                            <div className="text-[11px] text-textFaint">
-                              {ROLE_LABEL[e.other_user.role] || e.other_user.role}
-                              {e.other_user.employee_id && ` · ${e.other_user.employee_id}`}
-                            </div>
-                          </td>
-                          <td className="p-2.5">
-                            <div className="text-xs text-text">{fmtDate(e.exam_date)}</div>
-                            <div className="font-mono text-[11px] text-textMuted">
-                              {fmtTime(e.start_time)}–{fmtTime(e.end_time)}
-                            </div>
-                          </td>
-                          <td className="p-2.5">
-                            <div className="font-semibold text-text text-sm">{e.room_name}</div>
-                            <div className="text-[11px] text-textFaint">{e.course_codes || '—'}</div>
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              onClick={() => setPicked(e)}
-                              className="px-3 py-1 bg-brand-500 text-white text-xs font-bold rounded-md hover:bg-brand-600 transition-colors cursor-pointer"
-                            >
-                              Pick
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
+          {mode === 'cover' && (
+            <div className="border border-warning/30 rounded-lg p-3 bg-warning/5 mb-4 text-xs text-textMuted">
+              <b className="text-text">{target.full_name}</b> would take over the duty you pick below — doing it
+              <i> instead of you</i>. Your duty count drops, so the next exam period gives you one extra to balance it out.
+            </div>
+          )}
+
+          {offerable.length === 0 ? (
+            <div className="text-center text-textMuted bg-surface2 border border-border rounded-lg p-6 text-sm">
+              {mode === 'cover'
+                ? 'You have no duty to hand over.'
+                : 'You have no other duty to offer in exchange.'}
+            </div>
           ) : (
-            // ── Confirm step ───────────────────────────────────────────────
-            <div>
-              <p className="text-sm text-textMuted mb-4">
-                You'll trade duties with <b>{picked.other_user.full_name}</b>. After both they and the admin approve,
-                <b> you'll take their slot+room</b> and they'll take yours.
-              </p>
-
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="border border-border rounded-lg p-3 bg-surface2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-textFaint mb-1">You give up</div>
-                  <div className="text-sm font-semibold text-text">{fmtDate(duty.exam_date)}</div>
-                  <div className="font-mono text-xs text-textMuted">{fmtTime(duty.start_time)}–{fmtTime(duty.end_time)}</div>
-                  <div className="text-sm text-text mt-1">{duty.room_name}</div>
-                  <div className="text-[11px] text-textFaint">{duty.course_codes || '—'}</div>
-                </div>
-                <div className="border border-brand-500/30 rounded-lg p-3 bg-brand-500/5">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-brand-500 mb-1">You take</div>
-                  <div className="text-sm font-semibold text-text">{fmtDate(picked.exam_date)}</div>
-                  <div className="font-mono text-xs text-textMuted">{fmtTime(picked.start_time)}–{fmtTime(picked.end_time)}</div>
-                  <div className="text-sm text-text mt-1">{picked.room_name}</div>
-                  <div className="text-[11px] text-textFaint">{picked.course_codes || '—'}</div>
-                </div>
+            <>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-textFaint mb-2">
+                {mode === 'cover' ? 'Which of your duties do you want covered?' : 'Which of your duties will you give up?'}
+              </label>
+              <div className="space-y-2 mb-4">
+                {offerable.map((d) => {
+                  const active = picked?.assignment_id === d.assignment_id;
+                  return (
+                    <button
+                      key={d.assignment_id}
+                      onClick={() => setPicked(d)}
+                      className={`w-full text-left border rounded-lg p-3 transition-all cursor-pointer ${
+                        active
+                          ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500'
+                          : 'border-border bg-surface2 hover:border-brand-500/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-text">{fmtDate(d.exam_date)}</span>
+                        <span className="font-mono text-[11px] text-textMuted">
+                          {fmtTime(d.start_time)}–{fmtTime(d.end_time)}
+                        </span>
+                      </div>
+                      <div className="text-sm text-text mt-0.5">{d.room_name}</div>
+                      <div className="text-[11px] text-textFaint">{d.course_codes || '—'}</div>
+                    </button>
+                  );
+                })}
               </div>
 
               <label className="block text-[11px] font-bold uppercase tracking-wider text-textFaint mb-1">
-                Optional note for {picked.other_user.full_name}
+                Optional note for {target.full_name}
               </label>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value.slice(0, 500))}
                 rows={3}
-                placeholder="e.g. I have a medical appointment on that morning…"
+                placeholder="e.g. I have a medical appointment that morning…"
                 className="w-full bg-surface2 border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:border-brand-500 shadow-sm"
               />
-            </div>
+            </>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-border flex items-center justify-between gap-3">
-          {picked ? (
-            <button onClick={() => setPicked(null)} className="text-sm text-textMuted hover:text-text cursor-pointer">
-              ← Pick a different invigilator
-            </button>
-          ) : <span />}
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-4 py-2 bg-surface2 text-text text-xs font-bold rounded-md hover:bg-textFaint cursor-pointer">
-              Cancel
-            </button>
-            {picked && (
-              <button
-                onClick={submit}
-                disabled={submitting}
-                className={`px-4 py-2 text-xs font-bold rounded-md transition-colors ${submitting
-                  ? 'bg-surface2 text-textFaint cursor-not-allowed'
-                  : 'bg-brand-500 text-white hover:bg-brand-600 cursor-pointer'}`}
-              >
-                {submitting ? 'Sending…' : 'Send Swap Request'}
-              </button>
-            )}
-          </div>
+        <div className="px-6 py-3 border-t border-border flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-surface2 text-text text-xs font-bold rounded-md hover:bg-border cursor-pointer">
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting || !picked}
+            className={`px-4 py-2 text-xs font-bold rounded-md transition-colors ${
+              submitting || !picked
+                ? 'bg-surface2 text-textFaint cursor-not-allowed'
+                : 'bg-brand-500 text-white hover:bg-brand-600 cursor-pointer'
+            }`}
+          >
+            {submitting ? 'Sending…' : mode === 'cover' ? 'Send Cover Request' : 'Send Swap Request'}
+          </button>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { protect } from '../middleware/middleware1.js';
+import { protect, requireAdmin } from '../middleware/middleware1.js';
 import { uploadCourses, uploadEnrollments, resetSemesterData, getCourseList, getEnrollmentList, uploadCourseInstructors, downloadCourseInstructorTemplate, getEnrollmentMismatches } from '../controllers/uploadController.js';
 
 const router = express.Router();
@@ -67,10 +67,10 @@ const handleUpload = (multerMiddleware) => (req, res, next) => {
 router.get('/course-instructor-template', downloadCourseInstructorTemplate);
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  ROUTES — Protected by JWT auth
+//  ROUTES — Admin-only (JWT auth + admin role)
 // ═════════════════════════════════════════════════════════════════════════════
 
-router.use(protect);
+router.use(protect, requireAdmin);
 
 // POST /api/upload/courses — Course Master (.xlsx)
 router.post(

@@ -130,6 +130,7 @@ export const getMyProfile               = ()                 => API.get('/v1/use
 
 // Invigilator self-service (faculty / phd_student / lab_staff only)
 export const getMyInvigilationSchedule  = ()                 => API.get('/invigilator-scheduling/my-schedule');
+export const getFullInvigilationSchedule = ()                => API.get('/invigilator-scheduling/full-schedule');
 export const getSwapEligibleTargets     = (id)               => API.get(`/invigilator-scheduling/swap-eligible?my_assignment_id=${id}`);
 export const createSwapRequest          = (body)             => API.post('/invigilator-scheduling/swap-requests', body);
 export const getIncomingSwapRequests    = ()                 => API.get('/invigilator-scheduling/swap-requests/incoming');

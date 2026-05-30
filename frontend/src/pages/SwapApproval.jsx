@@ -114,9 +114,19 @@ export default function SwapApproval() {
               const isRejecting = rejectFormFor === r.id;
               return (
                 <div key={r.id} className="bg-surface rounded-xl border border-warning/30 p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${r.request_type === 'cover' ? 'bg-warning/15 text-warning' : 'bg-brand-500/15 text-brand-500'}`}>
+                      {r.request_type === 'cover' ? 'Cover request' : 'Two-way swap'}
+                    </span>
+                    <span className="text-[11px] text-textMuted">
+                      {r.request_type === 'cover'
+                        ? `Reassign ${r.requester.full_name}'s duty to ${r.target.full_name}`
+                        : `Trade duties between ${r.requester.full_name} and ${r.target.full_name}`}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-2 gap-3 mb-3">
-                    <PartyCard label="Requester" person={r.requester} side={r.requester} />
-                    <PartyCard label="Target"    person={r.target}    side={r.target}    accent />
+                    <PartyCard label={r.request_type === 'cover' ? 'Requester (gives duty away)' : 'Requester'} person={r.requester} side={r.requester} />
+                    <PartyCard label={r.request_type === 'cover' ? 'Volunteer (takes it over)' : 'Target'} person={r.target} side={r.target} accent hideDuty={r.request_type === 'cover'} />
                   </div>
 
                   {r.note && (
@@ -164,7 +174,7 @@ export default function SwapApproval() {
                         disabled={isBusy}
                         className={`px-4 py-2 text-xs font-bold rounded-md ${isBusy ? 'bg-surface2 text-textFaint cursor-not-allowed' : 'bg-success text-white hover:bg-success/90 cursor-pointer'}`}
                       >
-                        Approve &amp; execute swap
+                        {r.request_type === 'cover' ? 'Approve & reassign duty' : 'Approve & execute swap'}
                       </button>
                       <button
                         onClick={() => setRejectFormFor(r.id)}
@@ -230,13 +240,24 @@ export default function SwapApproval() {
                       <div className="text-[11px] text-textMuted">{r.requester.room_name}</div>
                     </td>
                     <td className="p-3">
-                      <div className="font-semibold text-text text-sm">{r.target.full_name}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-text text-sm">{r.target.full_name}</span>
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${r.request_type === 'cover' ? 'bg-warning/15 text-warning' : 'bg-brand-500/15 text-brand-500'}`}>
+                          {r.request_type === 'cover' ? 'Cover' : 'Swap'}
+                        </span>
+                      </div>
                       <div className="text-[11px] text-textFaint">{ROLE_LABEL[r.target.role] || r.target.role}</div>
                     </td>
                     <td className="p-3">
-                      <div className="text-xs text-text">{fmtDate(r.target.exam_date)}</div>
-                      <div className="font-mono text-[11px] text-textMuted">{fmtTime(r.target.start_time)}–{fmtTime(r.target.end_time)}</div>
-                      <div className="text-[11px] text-textMuted">{r.target.room_name}</div>
+                      {r.request_type === 'cover' ? (
+                        <span className="text-[11px] text-textFaint italic">Took over requester&apos;s duty</span>
+                      ) : (
+                        <>
+                          <div className="text-xs text-text">{fmtDate(r.target.exam_date)}</div>
+                          <div className="font-mono text-[11px] text-textMuted">{fmtTime(r.target.start_time)}–{fmtTime(r.target.end_time)}</div>
+                          <div className="text-[11px] text-textMuted">{r.target.room_name}</div>
+                        </>
+                      )}
                     </td>
                     <td className="p-3">
                       <StatusBadge status={r.status} />
@@ -257,7 +278,7 @@ export default function SwapApproval() {
   );
 }
 
-function PartyCard({ label, person, side, accent }) {
+function PartyCard({ label, person, side, accent, hideDuty }) {
   return (
     <div className={`border rounded-lg p-3 ${accent ? 'border-brand-500/30 bg-brand-500/5' : 'border-border bg-surface2'}`}>
       <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${accent ? 'text-brand-500' : 'text-textFaint'}`}>{label}</div>
@@ -266,10 +287,16 @@ function PartyCard({ label, person, side, accent }) {
         {ROLE_LABEL[person.role] || person.role}
         {person.employee_id && ` · ${person.employee_id}`}
       </div>
-      <div className="text-xs text-text">{fmtDate(side.exam_date)}</div>
-      <div className="font-mono text-[11px] text-textMuted">{fmtTime(side.start_time)}–{fmtTime(side.end_time)}</div>
-      <div className="text-sm text-text mt-1">{side.room_name}</div>
-      <div className="text-[11px] text-textFaint">{side.course_codes || '—'}</div>
+      {hideDuty ? (
+        <div className="text-[11px] text-textFaint italic">Will take over the requester&apos;s duty.</div>
+      ) : (
+        <>
+          <div className="text-xs text-text">{fmtDate(side.exam_date)}</div>
+          <div className="font-mono text-[11px] text-textMuted">{fmtTime(side.start_time)}–{fmtTime(side.end_time)}</div>
+          <div className="text-sm text-text mt-1">{side.room_name}</div>
+          <div className="text-[11px] text-textFaint">{side.course_codes || '—'}</div>
+        </>
+      )}
     </div>
   );
 }

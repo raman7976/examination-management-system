@@ -17,7 +17,7 @@ function ForgotPassword() {
     setError("");
     try {
       await sendOtp({ email });
-      setSuccess("OTP sent! Check your console/email.");
+      setSuccess("If that email is registered, a reset code has been sent. Please check your inbox.");
     } catch (error) {
       setError(error.response?.data?.message || "Failed to send OTP.");
     }

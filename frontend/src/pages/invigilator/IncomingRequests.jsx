@@ -84,6 +84,7 @@ export default function IncomingRequests() {
         {requests.map((r) => {
           const isBusy = busyId === r.id;
           const isRejecting = rejectFormFor === r.id;
+          const isCover = r.request_type === 'cover';
           return (
             <div key={r.id} className="bg-surface rounded-xl border border-border p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
@@ -95,26 +96,42 @@ export default function IncomingRequests() {
                     {r.requester.employee_id && ` · ${r.requester.employee_id}`}
                   </div>
                 </div>
-                <div className="text-[11px] text-textFaint">
-                  Requested {new Date(r.created_at).toLocaleString()}
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${isCover ? 'bg-warning/15 text-warning' : 'bg-brand-500/15 text-brand-500'}`}>
+                    {isCover ? 'Cover request' : 'Swap'}
+                  </span>
+                  <div className="text-[11px] text-textFaint">
+                    Requested {new Date(r.created_at).toLocaleString()}
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="border border-border rounded-lg p-3 bg-surface2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-textFaint mb-1">Their duty (you would take this)</div>
+              {isCover && (
+                <div className="mb-3 px-3 py-2 bg-warning/10 border border-warning/30 rounded-lg text-xs text-text">
+                  <b>{r.requester.full_name}</b> asks you to <b>take over</b> the duty below.
+                  You would do it on their behalf; you give up nothing in return.
+                </div>
+              )}
+
+              <div className={`grid gap-3 mb-3 ${isCover ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                <div className="border border-brand-500/30 rounded-lg p-3 bg-brand-500/5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-brand-500 mb-1">
+                    {isCover ? 'Their duty — you would take this over' : 'Their duty (you would take this)'}
+                  </div>
                   <div className="text-sm font-semibold text-text">{fmtDate(r.requester.exam_date)}</div>
                   <div className="font-mono text-xs text-textMuted">{fmtTime(r.requester.start_time)}–{fmtTime(r.requester.end_time)}</div>
                   <div className="text-sm text-text mt-1">{r.requester.room_name}</div>
                   <div className="text-[11px] text-textFaint">{r.requester.course_codes || '—'}</div>
                 </div>
-                <div className="border border-brand-500/30 rounded-lg p-3 bg-brand-500/5">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-brand-500 mb-1">Your duty (they would take this)</div>
-                  <div className="text-sm font-semibold text-text">{fmtDate(r.target.exam_date)}</div>
-                  <div className="font-mono text-xs text-textMuted">{fmtTime(r.target.start_time)}–{fmtTime(r.target.end_time)}</div>
-                  <div className="text-sm text-text mt-1">{r.target.room_name}</div>
-                  <div className="text-[11px] text-textFaint">{r.target.course_codes || '—'}</div>
-                </div>
+                {!isCover && (
+                  <div className="border border-border rounded-lg p-3 bg-surface2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-textFaint mb-1">Your duty (they would take this)</div>
+                    <div className="text-sm font-semibold text-text">{fmtDate(r.target.exam_date)}</div>
+                    <div className="font-mono text-xs text-textMuted">{fmtTime(r.target.start_time)}–{fmtTime(r.target.end_time)}</div>
+                    <div className="text-sm text-text mt-1">{r.target.room_name}</div>
+                    <div className="text-[11px] text-textFaint">{r.target.course_codes || '—'}</div>
+                  </div>
+                )}
               </div>
 
               {r.note && (

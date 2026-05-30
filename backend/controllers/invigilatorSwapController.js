@@ -37,6 +37,7 @@ const SWAP_DETAIL_SELECT = `
         sr.id,
         sr.exam_period_id,
         sr.status,
+        sr.request_type,
         sr.note,
         sr.created_at,
         sr.peer_responded_at,
@@ -76,9 +77,9 @@ const SWAP_DETAIL_SELECT = `
     JOIN invigilator_assignments ra ON ra.id = sr.requester_assignment_id
     JOIN exam_slots rs   ON rs.id = ra.slot_id
     JOIN classrooms rc   ON rc.id = ra.classroom_id
-    JOIN invigilator_assignments ta ON ta.id = sr.target_assignment_id
-    JOIN exam_slots ts   ON ts.id = ta.slot_id
-    JOIN classrooms tc   ON tc.id = ta.classroom_id
+    LEFT JOIN invigilator_assignments ta ON ta.id = sr.target_assignment_id
+    LEFT JOIN exam_slots ts   ON ts.id = ta.slot_id
+    LEFT JOIN classrooms tc   ON tc.id = ta.classroom_id
 `;
 
 // Fetch course_codes per (slot_id, classroom_id) — used as a sidecar lookup
@@ -111,6 +112,7 @@ function shapeSwap(row, coursesByRoom) {
     return {
         id: row.id,
         status: row.status,
+        request_type: row.request_type || 'swap',
         note: row.note,
         created_at: row.created_at,
         peer_responded_at: row.peer_responded_at,
@@ -211,6 +213,102 @@ export const getMySchedule = async (req, res) => {
     } catch (err) {
         const status = err.http || 500;
         console.error('getMySchedule error:', err);
+        res.status(status).json({ success: false, message: err.message || 'Failed to load schedule.' });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GET /full-schedule  (invigilator)
+//
+//  The WHOLE published grid for the active period — every slot, every room,
+//  every assigned invigilator (name + employee_id + ★). Read-only. Each
+//  invigilator chip carries `is_me` so the portal can highlight my own duties
+//  and decide which cells are valid swap targets. Mirrors the admin
+//  getSchedule shape (slots[] → rooms[] → invigilators[]).
+// ═════════════════════════════════════════════════════════════════════════════
+export const getFullSchedule = async (req, res) => {
+    try {
+        const periodId = await resolveActivePeriod(null, req.query.period_id);
+        const period = await loadPeriod(null, periodId);
+
+        const [slots] = await db.query(
+            `SELECT es.id AS slot_id, es.exam_date, es.exam_day, es.start_time, es.end_time
+             FROM exam_slots es
+             WHERE es.exam_period_id = ?
+             ORDER BY es.exam_date, es.start_time`,
+            [periodId]
+        );
+        if (slots.length === 0)
+            return res.json({ success: true, exam_period: period, schedule: [] });
+
+        const slotIds = slots.map(s => s.slot_id);
+        const ph = slotIds.map(() => '?').join(',');
+
+        // Rooms (with student load + course codes) per slot — same aggregation
+        // getSchedule uses, so the grid columns match the admin view exactly.
+        const [roomRows] = await db.query(
+            `SELECT se.slot_id, sa.classroom_id, c.room_name, c.location_order,
+                    SUM(sa.student_count) AS students_in_room,
+                    GROUP_CONCAT(DISTINCT co.course_code SEPARATOR ', ') AS course_codes
+             FROM seating_allocations sa
+             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+             JOIN classrooms c       ON sa.classroom_id = c.id
+             JOIN exam_slots es      ON se.slot_id = es.id
+             JOIN exam_periods ep    ON ep.id = es.exam_period_id
+             JOIN courses co         ON se.course_code = co.course_code AND co.semester_label = ep.semester_label
+             WHERE se.slot_id IN (${ph})
+             GROUP BY se.slot_id, sa.classroom_id, c.room_name, c.location_order
+             ORDER BY se.slot_id, c.location_order`,
+            slotIds
+        );
+
+        const [assignRows] = await db.query(
+            `SELECT ia.id AS assignment_id, ia.slot_id, ia.classroom_id, ia.user_id,
+                    ia.is_course_instructor, u.full_name, u.role, u.employee_id
+             FROM invigilator_assignments ia
+             JOIN users u ON ia.user_id = u.id
+             WHERE ia.slot_id IN (${ph}) AND ia.exam_period_id = ?
+             ORDER BY ia.slot_id, ia.classroom_id, u.full_name`,
+            [...slotIds, periodId]
+        );
+
+        const slotMap = new Map();
+        for (const s of slots) slotMap.set(s.slot_id, { ...s, rooms: [] });
+        const roomKey = (sid, cid) => `${sid}|${cid}`;
+        const roomMap = new Map();
+        for (const r of roomRows) {
+            const k = roomKey(r.slot_id, r.classroom_id);
+            const students = Number(r.students_in_room);
+            const entry = {
+                classroom_id:   r.classroom_id,
+                room_name:      r.room_name,
+                location_order: r.location_order,
+                students,
+                required:       Math.max(1, Math.ceil(students / 25)),
+                course_codes:   r.course_codes,
+                invigilators:   [],
+            };
+            roomMap.set(k, entry);
+            slotMap.get(r.slot_id).rooms.push(entry);
+        }
+        for (const a of assignRows) {
+            const room = roomMap.get(roomKey(a.slot_id, a.classroom_id));
+            if (!room) continue;
+            room.invigilators.push({
+                assignment_id:        a.assignment_id,
+                user_id:              a.user_id,
+                full_name:            a.full_name,
+                role:                 a.role,
+                employee_id:          a.employee_id,
+                is_course_instructor: !!a.is_course_instructor,
+                is_me:                a.user_id === req.user.id,
+            });
+        }
+
+        res.json({ success: true, exam_period: period, schedule: Array.from(slotMap.values()) });
+    } catch (err) {
+        const status = err.http || 500;
+        console.error('getFullSchedule error:', err);
         res.status(status).json({ success: false, message: err.message || 'Failed to load schedule.' });
     }
 };
@@ -317,11 +415,32 @@ export const listSwapEligibleTargets = async (req, res) => {
 // ═════════════════════════════════════════════════════════════════════════════
 //  POST /swap-requests  (invigilator)
 //
-//  Atomically validate ownership / period / duplicate-pair / feasibility and
-//  insert a pending_peer row. All validation runs FOR UPDATE so racing
-//  requests against the same pair serialise cleanly.
+//  Two request types, both inserted as pending_peer:
+//
+//   • request_type = 'swap'  (default) — a two-way trade. Needs
+//     requester_assignment_id + target_assignment_id. On approval the two
+//     duties exchange occupants.
+//
+//   • request_type = 'cover' — I hand my duty entirely to another person.
+//     Needs requester_assignment_id + target_user_id (no target duty). On
+//     approval my assignment is reassigned to the target, who then does both
+//     their own duty and mine; my duty count drops, so the carryover marks me
+//     as owing one in the next exam-period generation.
+//
+//  All validation runs FOR UPDATE so racing requests serialise cleanly.
 // ═════════════════════════════════════════════════════════════════════════════
 export const createSwapRequest = async (req, res) => {
+    const requestType = (req.body?.request_type || 'swap').toLowerCase();
+    if (!['swap', 'cover'].includes(requestType))
+        return res.status(400).json({ success: false, message: `Unknown request_type: ${requestType}` });
+
+    return requestType === 'cover'
+        ? createCoverRequest(req, res)
+        : createTwoWaySwapRequest(req, res);
+};
+
+// ── 'swap' — two-way trade ───────────────────────────────────────────────────
+async function createTwoWaySwapRequest(req, res) {
     const { requester_assignment_id, target_assignment_id, note } = req.body || {};
     if (!requester_assignment_id || !target_assignment_id)
         return res.status(400).json({ success: false, message: 'requester_assignment_id and target_assignment_id are required.' });
@@ -379,8 +498,8 @@ export const createSwapRequest = async (req, res) => {
         const [ins] = await conn.query(
             `INSERT INTO invigilator_swap_requests
                  (exam_period_id, requester_user_id, target_user_id,
-                  requester_assignment_id, target_assignment_id, status, note)
-             VALUES (?, ?, ?, ?, ?, 'pending_peer', ?)`,
+                  requester_assignment_id, target_assignment_id, request_type, status, note)
+             VALUES (?, ?, ?, ?, ?, 'swap', 'pending_peer', ?)`,
             [periodId, reqA.user_id, tgtA.user_id, reqA.id, tgtA.id, note || null]
         );
 
@@ -396,12 +515,85 @@ export const createSwapRequest = async (req, res) => {
     } catch (err) {
         await conn.rollback().catch(() => {});
         const status = err.http || 500;
-        if (!err.http) console.error('createSwapRequest error:', err);
+        if (!err.http) console.error('createTwoWaySwapRequest error:', err);
         res.status(status).json({ success: false, message: err.message || 'Failed to create swap request.' });
     } finally {
         conn.release();
     }
-};
+}
+
+// ── 'cover' — hand my duty entirely to another person ────────────────────────
+async function createCoverRequest(req, res) {
+    const { requester_assignment_id, target_user_id, note } = req.body || {};
+    if (!requester_assignment_id || !target_user_id)
+        return res.status(400).json({ success: false, message: 'requester_assignment_id and target_user_id are required for a cover request.' });
+    if (Number(target_user_id) === req.user.id)
+        return res.status(400).json({ success: false, message: 'You cannot ask yourself to cover your own duty.' });
+
+    const conn = await db.getConnection();
+    try {
+        const periodId = await resolveActivePeriod(conn, req.body.period_id);
+        await conn.beginTransaction();
+
+        // 1. Lock my duty.
+        const [[reqA]] = await conn.query(
+            `SELECT id, slot_id, classroom_id, user_id, exam_period_id
+             FROM invigilator_assignments WHERE id = ? FOR UPDATE`,
+            [Number(requester_assignment_id)]
+        );
+        if (!reqA)                              throw httpErr(404, 'Your duty was not found.');
+        if (reqA.user_id !== req.user.id)       throw httpErr(403, 'That duty is not yours.');
+        if (reqA.exam_period_id !== periodId)   throw httpErr(409, 'Duty is not in the active exam period.');
+
+        // 2. Target must be a real non-admin invigilator.
+        const [[target]] = await conn.query(
+            "SELECT id FROM users WHERE id = ? AND role != 'admin'",
+            [Number(target_user_id)]
+        );
+        if (!target) throw httpErr(404, 'Target invigilator not found.');
+
+        // 3. Target must be FREE in my duty's slot (else covering double-books them).
+        const [conflict] = await conn.query(
+            `SELECT 1 FROM invigilator_assignments
+             WHERE slot_id = ? AND user_id = ? AND exam_period_id = ?`,
+            [reqA.slot_id, Number(target_user_id), periodId]
+        );
+        if (conflict.length)
+            throw httpErr(409, 'That person already has a duty in the same slot, so they cannot cover this one.');
+
+        // 4. Duplicate guard — no active cover request for this duty + person.
+        const [[dup]] = await conn.query(
+            `SELECT id FROM invigilator_swap_requests
+             WHERE requester_assignment_id = ? AND target_user_id = ? AND request_type = 'cover'
+               AND status IN ('pending_peer','pending_admin')
+             LIMIT 1 FOR UPDATE`,
+            [reqA.id, Number(target_user_id)]
+        );
+        if (dup) throw httpErr(409, 'You already have an active cover request for this duty with that person.');
+
+        // 5. Insert (target_assignment_id stays NULL for covers).
+        const [ins] = await conn.query(
+            `INSERT INTO invigilator_swap_requests
+                 (exam_period_id, requester_user_id, target_user_id,
+                  requester_assignment_id, target_assignment_id, request_type, status, note)
+             VALUES (?, ?, ?, ?, NULL, 'cover', 'pending_peer', ?)`,
+            [periodId, reqA.user_id, Number(target_user_id), reqA.id, note || null]
+        );
+
+        const [detail] = await conn.query(`${SWAP_DETAIL_SELECT} WHERE sr.id = ?`, [ins.insertId]);
+
+        await conn.commit();
+        const decorated = await decorateSwaps(null, detail);
+        res.status(201).json({ success: true, request: decorated[0] });
+    } catch (err) {
+        await conn.rollback().catch(() => {});
+        const status = err.http || 500;
+        if (!err.http) console.error('createCoverRequest error:', err);
+        res.status(status).json({ success: false, message: err.message || 'Failed to create cover request.' });
+    } finally {
+        conn.release();
+    }
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  GET /swap-requests/incoming  (invigilator)
@@ -627,17 +819,9 @@ export const adminRespondToSwap = async (req, res) => {
 
         // ── APPROVE path — defensive validation, then execute ───────────────
 
-        // 2. Lock both assignment rows in id-asc order (deadlock-safe).
-        const ids = [swap.requester_assignment_id, swap.target_assignment_id].sort((a, b) => a - b);
-        const [aRows] = await conn.query(
-            `SELECT id, slot_id, classroom_id, user_id, exam_period_id
-             FROM invigilator_assignments WHERE id IN (?, ?) FOR UPDATE`,
-            ids
-        );
-
-        // Helper to fail the swap defensively WITHOUT rolling back: we
-        // commit a `rejected_by_admin` with a system note so the audit
-        // trail captures why the schedule moved underneath the request.
+        // Helper to fail defensively WITHOUT rolling back: commit a
+        // `rejected_by_admin` with a system note so the audit trail captures
+        // why the schedule moved underneath the request.
         const failDefensively = async (reason) => {
             await conn.query(
                 `UPDATE invigilator_swap_requests
@@ -649,6 +833,56 @@ export const adminRespondToSwap = async (req, res) => {
             await conn.commit();
             return res.status(409).json({ success: false, message: reason, status: 'rejected_by_admin' });
         };
+
+        // ── COVER: reassign the requester's duty entirely to the target ─────
+        //  Only the requester's row moves (target keeps their own duty and
+        //  absorbs this one). The requester's duty count drops, so carryover
+        //  marks them as owing one in the next exam-period generation.
+        if (swap.request_type === 'cover') {
+            const [[reqA]] = await conn.query(
+                `SELECT id, slot_id, classroom_id, user_id, exam_period_id
+                 FROM invigilator_assignments WHERE id = ? FOR UPDATE`,
+                [swap.requester_assignment_id]
+            );
+            if (!reqA)                                       return failDefensively('The duty being covered no longer exists.');
+            if (reqA.user_id !== swap.requester_user_id)     return failDefensively('Requester has been reassigned since the request was created.');
+            if (reqA.exam_period_id !== swap.exam_period_id) return failDefensively('Underlying duty has moved to a different exam period.');
+
+            // Target must still be free in that slot (no double-booking).
+            const [conflict] = await conn.query(
+                `SELECT 1 FROM invigilator_assignments
+                 WHERE slot_id = ? AND user_id = ? AND exam_period_id = ? AND id != ?`,
+                [reqA.slot_id, swap.target_user_id, swap.exam_period_id, reqA.id]
+            );
+            if (conflict.length)
+                return failDefensively('Target now has a duty in that slot, so they can no longer cover this one.');
+
+            // Reassign the duty to the target; recompute ★ for them in that room.
+            const tgtIsInstr = await isInstructorForRoom(conn, swap.target_user_id, reqA.slot_id, reqA.classroom_id);
+            await conn.query(
+                `UPDATE invigilator_assignments
+                 SET user_id = ?, is_course_instructor = ?
+                 WHERE id = ?`,
+                [swap.target_user_id, tgtIsInstr ? 1 : 0, reqA.id]
+            );
+            await conn.query(
+                `UPDATE invigilator_swap_requests
+                 SET status = 'approved', admin_responded_at = NOW(), note = COALESCE(?, note)
+                 WHERE id = ?`,
+                [adminNote || null, id]
+            );
+            await conn.commit();
+            return res.json({ success: true, status: 'approved', message: 'Cover approved — duty reassigned to the volunteer.' });
+        }
+
+        // ── SWAP: two-way trade ──────────────────────────────────────────────
+        // 2. Lock both assignment rows in id-asc order (deadlock-safe).
+        const ids = [swap.requester_assignment_id, swap.target_assignment_id].sort((a, b) => a - b);
+        const [aRows] = await conn.query(
+            `SELECT id, slot_id, classroom_id, user_id, exam_period_id
+             FROM invigilator_assignments WHERE id IN (?, ?) FOR UPDATE`,
+            ids
+        );
 
         if (aRows.length !== 2) {
             return failDefensively('One or both underlying assignments no longer exist.');
@@ -680,24 +914,52 @@ export const adminRespondToSwap = async (req, res) => {
                 return failDefensively('Swap would place a person in two rooms in the same slot.');
         }
 
-        // 5. Recompute ★ flag for the NEW occupant of each row.
-        const reqIsInstr = await isInstructorForRoom(conn, swap.target_user_id,    reqA.slot_id, reqA.classroom_id);
-        const tgtIsInstr = await isInstructorForRoom(conn, swap.requester_user_id, tgtA.slot_id, tgtA.classroom_id);
-
-        // 6. Execute the swap — only user_id and is_course_instructor change;
-        //    (slot_id, classroom_id) stay put so the rooms don't move.
-        await conn.query(
-            `UPDATE invigilator_assignments
-             SET user_id = ?, is_course_instructor = ?
-             WHERE id = ?`,
-            [swap.target_user_id, reqIsInstr ? 1 : 0, reqA.id]
-        );
-        await conn.query(
-            `UPDATE invigilator_assignments
-             SET user_id = ?, is_course_instructor = ?
-             WHERE id = ?`,
-            [swap.requester_user_id, tgtIsInstr ? 1 : 0, tgtA.id]
-        );
+        // 5 + 6. Execute the swap. The mechanism depends on whether the two
+        //  duties share a slot, because uq_slot_user = (slot_id, user_id,
+        //  exam_period_id) is checked PER ROW as each UPDATE runs:
+        //
+        //   • Different slots → swap user_id. Feasibility was re-validated in
+        //     step 4, so neither row transiently duplicates a (slot, user) key.
+        //
+        //   • Same slot → swapping user_id would, after the FIRST update, leave
+        //     BOTH rows at (slot, target_user) until the second update lands —
+        //     tripping uq_slot_user mid-transaction. Instead we swap the
+        //     classroom_id (and ★ flag): user_id never changes, so the unique
+        //     key can never collide, and the end state (each person in the
+        //     other's room) is identical to a user_id swap.
+        if (reqA.slot_id === tgtA.slot_id) {
+            // reqA keeps its user, moves into tgtA's room; tgtA vice-versa.
+            const reqIsInstr = await isInstructorForRoom(conn, reqA.user_id, reqA.slot_id, tgtA.classroom_id);
+            const tgtIsInstr = await isInstructorForRoom(conn, tgtA.user_id, tgtA.slot_id, reqA.classroom_id);
+            await conn.query(
+                `UPDATE invigilator_assignments
+                 SET classroom_id = ?, is_course_instructor = ?
+                 WHERE id = ?`,
+                [tgtA.classroom_id, reqIsInstr ? 1 : 0, reqA.id]
+            );
+            await conn.query(
+                `UPDATE invigilator_assignments
+                 SET classroom_id = ?, is_course_instructor = ?
+                 WHERE id = ?`,
+                [reqA.classroom_id, tgtIsInstr ? 1 : 0, tgtA.id]
+            );
+        } else {
+            // Recompute ★ flag for the NEW occupant of each row.
+            const reqIsInstr = await isInstructorForRoom(conn, swap.target_user_id,    reqA.slot_id, reqA.classroom_id);
+            const tgtIsInstr = await isInstructorForRoom(conn, swap.requester_user_id, tgtA.slot_id, tgtA.classroom_id);
+            await conn.query(
+                `UPDATE invigilator_assignments
+                 SET user_id = ?, is_course_instructor = ?
+                 WHERE id = ?`,
+                [swap.target_user_id, reqIsInstr ? 1 : 0, reqA.id]
+            );
+            await conn.query(
+                `UPDATE invigilator_assignments
+                 SET user_id = ?, is_course_instructor = ?
+                 WHERE id = ?`,
+                [swap.requester_user_id, tgtIsInstr ? 1 : 0, tgtA.id]
+            );
+        }
 
         // 7. Mark request approved.
         await conn.query(

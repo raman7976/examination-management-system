@@ -15,13 +15,34 @@ dotenv.config();
 
 const app = express();
 
+// Trust the first proxy hop (needed so express-rate-limit reads the real client
+// IP from X-Forwarded-For instead of the proxy's). Safe for a single reverse
+// proxy / load balancer in front of the app.
+app.set('trust proxy', 1);
 
 // ==========================================
 // 1. GLOBAL MIDDLEWARE
 // ==========================================
+
+// Allow-list of front-end origins. Configure CORS_ORIGINS in .env as a
+// comma-separated list (e.g. "https://exams.lnmiit.ac.in,https://admin.lnmiit.ac.in").
+// Falls back to the local Vite dev servers when unset.
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:5174')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
 app.use(helmet());             // Protects against common web vulnerabilities
-app.use(cors({ exposedHeaders: ['Content-Disposition'] }));               // Allows your frontend to talk to this backend
-app.use(morgan('dev'));        // Logs requests 
+app.use(cors({
+    origin: (origin, cb) => {
+        // Allow same-origin / non-browser tools (no Origin header) and any
+        // explicitly allow-listed origin; reject everything else.
+        if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error(`Origin ${origin} is not allowed by CORS.`));
+    },
+    exposedHeaders: ['Content-Disposition'],
+}));
+app.use(morgan('dev'));        // Logs requests
 app.use(express.json());       // Parses incoming JSON payloads
 
 
@@ -79,7 +100,7 @@ app.use((err, req, res, next) => {
 // 4. SERVER INITIALIZATION
 // ==========================================
 // Use the environment port, OR fallback to 5001 locally
-const PORT = process.env.PORT ;
+const PORT = process.env.PORT || 5001;
 
 
 

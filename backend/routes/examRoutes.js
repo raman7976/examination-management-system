@@ -1,6 +1,6 @@
 import express  from 'express';
 import multer   from 'multer';
-import { protect } from '../middleware/middleware1.js';
+import { protect, requireAdmin } from '../middleware/middleware1.js';
 // Controllers
 import {
     // Phase 1
@@ -73,7 +73,7 @@ const handleSeatingUpload = (req, res, next) => {
 
 
 
-router.use(protect);
+router.use(protect, requireAdmin);
 // ─────────────────────────────────────────────────────────────────────────────
 //  PHASE 1 – EXAM SLOTS
 //  POST /api/exams/add-batch-slots

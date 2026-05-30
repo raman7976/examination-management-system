@@ -1,11 +1,11 @@
 import express from 'express';
-import { protect } from '../middleware/middleware1.js';
+import { protect, requireAdmin } from '../middleware/middleware1.js';
 import { generateMicroPlan, getPlanView, getSeatingStatus } from '../controllers/seatingController.js';
 import { saveSession, getAllSessions, getSessionById, deleteSession } from '../controllers/examSessionController.js';
 
 const router = express.Router();
 
-router.use(protect);
+router.use(protect, requireAdmin);
 
 // POST /api/seating/generate-plan
 router.post('/generate-plan', generateMicroPlan);

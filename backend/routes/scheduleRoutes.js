@@ -1,14 +1,14 @@
 import express from 'express';
-import { protect } from '../middleware/middleware1.js';
+import { protect, requireAdmin } from '../middleware/middleware1.js';
 import { getSlots, getUnscheduledCourses, getScheduledCourses, assignCourses, unassignCourse } from '../controllers/scheduleController.js';
 
 const router = express.Router();
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  All schedule routes are protected by JWT auth
+//  All schedule routes are admin-only (JWT auth + admin role)
 // ═════════════════════════════════════════════════════════════════════════════
 
-router.use(protect);
+router.use(protect, requireAdmin);
 
 // GET  /api/schedule/slots               — Fetch all exam slots
 router.get('/slots', getSlots);
