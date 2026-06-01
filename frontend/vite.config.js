@@ -13,4 +13,17 @@ export default defineConfig({
       },
     },
   },
+  // ── Vitest (jsdom component tests) ──────────────────────────────────────────
+  // Runs the React component/page suite in a browser-like jsdom env. msw
+  // intercepts the axios `/api` calls at the network layer, so the proxy above
+  // is irrelevant under test. Asset/CSS imports are stubbed by Vite.
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./test/setup/vitest.setup.js'],
+    include: ['src/**/*.test.{js,jsx}'],
+    css: false,
+    clearMocks: true,
+    restoreMocks: true,
+  },
 });

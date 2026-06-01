@@ -858,8 +858,7 @@ function SchedulePanel({ periodVersion, activePeriod }) {
 
             {/* Unsaved changes banner — sticky at top */}
             {pendingCount > 0 && (
-                <div className="sticky top-0 z-30 mb-4 -mx-1 px-4 py-3 rounded-lg shadow-md flex items-center justify-between flex-wrap gap-2"
-                    className="bg-gradient-to-r from-warning/15 to-warning/25">
+                <div className="sticky top-0 z-30 mb-4 -mx-1 px-4 py-3 rounded-lg shadow-md flex items-center justify-between flex-wrap gap-2 bg-gradient-to-r from-warning/15 to-warning/25">
                     <div className="flex items-center gap-3 text-xs">
                         <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-warning text-white font-bold text-[11px]">{pendingCount}</span>
                         <div>

@@ -1,0 +1,47 @@
+# ═════════════════════════════════════════════════════════════════════════════
+#  nginx site config for the Examination Management System.
+#
+#  One origin serves everything:
+#    • the built React app (frontend/dist) as static files, SPA-style
+#    • /api/*  reverse-proxied to the Node backend on 127.0.0.1:5001
+#
+#  Because the app and API share an origin, the browser makes same-origin calls
+#  (axios baseURL is the relative "/api"), so CORS never comes into play in prod.
+#
+#  Install:
+#    sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/exam-portal
+#    sudo ln -s /etc/nginx/sites-available/exam-portal /etc/nginx/sites-enabled/
+#    sudo nginx -t && sudo systemctl reload nginx
+#
+#  For HTTPS, run `sudo certbot --nginx -d exams.college.edu` after this is live,
+#  or terminate TLS at the college's existing load balancer.
+# ═════════════════════════════════════════════════════════════════════════════
+
+server {
+    listen 80;
+    server_name exams.college.edu;   # ← change to the real host / IP
+
+    # Built frontend lives here (see DEPLOYMENT.md step 5).
+    root /var/www/exam-portal;
+    index index.html;
+
+    # Uploads (course/enrollment .xlsx, enrollment .zip) — the backend caps files
+    # at ~10 MB, so allow a little headroom here or nginx rejects them with 413.
+    client_max_body_size 15M;
+
+    # ── API → Node backend ───────────────────────────────────────────────────
+    location /api/ {
+        proxy_pass http://127.0.0.1:5001;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;  # rate-limiter reads this
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;   # seating/invigilator generation can be slow on big data
+    }
+
+    # ── SPA fallback: every other path serves index.html so React Router works ─
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

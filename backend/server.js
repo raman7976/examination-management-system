@@ -102,9 +102,13 @@ app.use((err, req, res, next) => {
 // Use the environment port, OR fallback to 5001 locally
 const PORT = process.env.PORT || 5001;
 
+// Skip listening under test — the integration suite imports `app` directly into
+// supertest (in-process HTTP) and must not bind a real port.
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT} ..... `);
+  });
+}
 
-
-
-app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT} ..... `);
-});
+// Exported so tests (supertest) can drive the app without a live socket.
+export default app;

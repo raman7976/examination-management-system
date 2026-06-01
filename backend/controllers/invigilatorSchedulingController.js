@@ -1031,13 +1031,15 @@ export const getEligibleForSlot = async (req, res) => {
         const periodId = await resolveActivePeriod(null, req.query.period_id);
 
         // Busy = already in this slot WITHIN the active exam period (other periods are irrelevant).
-        const params = [slotId, periodId];
         let busyClause = 'SELECT user_id FROM invigilator_assignments WHERE slot_id = ? AND exam_period_id = ?';
+        const busyParams = [slotId, periodId];
         if (excludeAssignmentId) {
             busyClause += ' AND id != ?';
-            params.push(excludeAssignmentId);
+            busyParams.push(excludeAssignmentId);
         }
-        params.push(periodId, periodId, periodId);
+        // Placeholder order in the SQL below: the three enrichment `?` (assigned_count
+        // subquery + the two LEFT JOINs) come FIRST, then the busy subquery's `?`s.
+        const params = [periodId, periodId, periodId, ...busyParams];
 
         const [rows] = await db.query(
             `SELECT u.id AS user_id, u.full_name, u.role, u.employee_id, u.department,

@@ -1,0 +1,7 @@
+# Playwright + e2e run artifacts — never committed.
+node_modules/
+/.auth/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

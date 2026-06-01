@@ -272,6 +272,7 @@ export default function MySchedule() {
                                   return (
                                     <button
                                       key={inv.assignment_id}
+                                      data-testid={`invig-chip-${inv.assignment_id}`}
                                       disabled={!clickable}
                                       onClick={() => openSwap(inv, slot, room)}
                                       title={

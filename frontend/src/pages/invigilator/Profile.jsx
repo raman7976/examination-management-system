@@ -60,8 +60,7 @@ export default function Profile() {
         <div className="bg-surface rounded-xl shadow-sm border border-border p-6">
           <div className="flex items-center gap-4 mb-6 pb-5 border-b border-border">
             <div
-              className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold uppercase flex-shrink-0"
-              className="bg-gradient-to-br from-brand-500 to-brand-600"
+              className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold uppercase flex-shrink-0 bg-gradient-to-br from-brand-500 to-brand-600"
             >
               {user.full_name?.charAt(0) || 'U'}
             </div>

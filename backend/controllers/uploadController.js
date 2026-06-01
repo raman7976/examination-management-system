@@ -3,48 +3,7 @@ import AdmZip from 'adm-zip';
 import XLSX from 'xlsx';
 import db from '../config/mysql.js';
 import { resolveActivePeriod, getActiveSemesterLabel } from '../utils/periodResolver.js';
-
-
-
-function getCellValue(cell) {
-    const val = cell?.value;
-    if (val == null) return '';
-    
-    // If the cell contains an object, extract the actual text
-    if (typeof val === 'object') {
-        if (val.richText) {
-            return val.richText.map(rt => rt.text).join(''); // Extract from Rich Text
-        }
-        if (val.text) {
-            return val.text; // Extract from Hyperlink
-        }
-        if (val.result !== undefined) {
-            return String(val.result); // Extract from Formula
-        }
-    }
-    
-    // Fallback for primitive types (strings, numbers)
-    return String(val);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-//  Converts to lowercase AND strips ALL spaces/underscores
-//  'Course Name' / 'COURSENAME' / 'Course_Name' / 'course name' → 'coursename'
-// ═════════════════════════════════════════════════════════════════════════════
-
-function buildHeaderMap(worksheet) {
-    const headerRow = worksheet.getRow(1);
-    const map = {}; // fully-normalized header → column number
-
-    headerRow.eachCell((cell, colNumber) => {
-        const raw = String(cell.value ?? '')
-            .toLowerCase()
-            .replace(/[\s_]+/g, '');   // strip ALL whitespace and underscores
-        if (raw) map[raw] = colNumber;
-    });
-
-    return map;
-}
+import { getCellValue, buildHeaderMap } from '../utils/uploadParsing.js';
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  POST /api/upload/courses

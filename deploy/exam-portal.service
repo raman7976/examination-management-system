@@ -1,0 +1,35 @@
+# ═════════════════════════════════════════════════════════════════════════════
+#  systemd unit for the Examination Management System backend (Node/Express).
+#  Keeps the API running on boot and restarts it if it crashes.
+#
+#  Assumes the repo is deployed at /opt/exam-portal and runs as user `examportal`.
+#  Adjust WorkingDirectory / User / node path to match your server.
+#
+#  Install:
+#    sudo cp deploy/exam-portal.service /etc/systemd/system/exam-portal.service
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now exam-portal
+#    systemctl status exam-portal            # check it came up
+#    journalctl -u exam-portal -f            # tail logs
+#
+#  DB creds + JWT secret are read from /opt/exam-portal/backend/.env by dotenv
+#  (server.js calls dotenv.config()), so they are NOT duplicated here.
+# ═════════════════════════════════════════════════════════════════════════════
+
+[Unit]
+Description=Examination Management System API
+After=network.target
+
+[Service]
+Type=simple
+User=examportal
+WorkingDirectory=/opt/exam-portal/backend
+Environment=NODE_ENV=production
+# Use the absolute path to node (find it with `which node`); a bare `node` may
+# not be on systemd's PATH. Adjust if you use nvm / a different install.
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

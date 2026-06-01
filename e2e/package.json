@@ -1,0 +1,22 @@
+{
+  "name": "ems-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright end-to-end journeys for the Examination Management System. Kept in a SEPARATE package so Playwright + its browsers never leak into the app bundles. Runs against the LIVE Aiven DB with __TEST_E2E_ prefix isolation and a captured/restored active period (see global-setup.js).",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.5"
+  }
+}
