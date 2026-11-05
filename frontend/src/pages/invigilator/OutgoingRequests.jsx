@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getOutgoingSwapRequests, cancelMySwapRequest } from '../../api/api.js';
 import StatusBadge from '../../components/StatusBadge.jsx';
@@ -57,7 +57,6 @@ export default function OutgoingRequests() {
 
   return (
     <div className="max-w-[1100px]">
-      <ToastContainer position="top-right" autoClose={3000} />
       <div className="mb-5 flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-brand-500 tracking-tight">My Swap Requests</h1>

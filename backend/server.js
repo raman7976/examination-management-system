@@ -9,6 +9,7 @@ import scheduleRoutes from './routes/scheduleRoutes.js';
 import seatingRoutes from './routes/seatingRoutes.js';
 import registrationRoutes from './routes/registrationRoutes.js';
 import invigilatorSchedulingRoutes from './routes/invigilatorSchedulingRoutes.js';
+import unfairMeansRoutes from './routes/unfairMeansRoutes.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -60,6 +61,7 @@ app.use('/api/schedule', scheduleRoutes);
 app.use('/api/seating', seatingRoutes);
 app.use('/api/registration', registrationRoutes);
 app.use('/api/invigilator-scheduling', invigilatorSchedulingRoutes);
+app.use('/api/unfair-means', unfairMeansRoutes);
 
 
 

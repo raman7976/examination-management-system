@@ -117,12 +117,22 @@ export const updateInvigilatorOverride    = (userId, body)        => API.put(`/i
 export const generateInvigilatorSchedule  = (body = {})           => API.post('/invigilator-scheduling/generate', body);
 export const previewInvigilatorSchedule   = (body = {})           => API.post('/invigilator-scheduling/generate-preview', body);
 export const getInvigilatorSchedule       = (slotId = '')         => API.get(`/invigilator-scheduling/schedule${slotId ? `?slot_id=${slotId}` : ''}`);
-export const getEligibleInvigilators      = (slotId, excludeId)   => API.get(`/invigilator-scheduling/eligible?slot_id=${slotId}${excludeId ? `&exclude_assignment_id=${excludeId}` : ''}`);
+export const getInvigilationProgress      = ()                    => API.get('/invigilator-scheduling/progress');
+// includeBusy: also return people already placed in the slot (flagged with
+// busy_assignment_id) so the draft editor can decide availability itself.
+export const getEligibleInvigilators      = (slotId, excludeId, { includeBusy = false } = {}) =>
+    API.get(`/invigilator-scheduling/eligible?slot_id=${slotId}${excludeId ? `&exclude_assignment_id=${excludeId}` : ''}${includeBusy ? '&include_busy=1' : ''}`);
 export const addInvigilatorAssignment     = (body)                => API.post('/invigilator-scheduling/assignments', body);
 export const reassignInvigilatorAssignment = (id, userId)         => API.put(`/invigilator-scheduling/assignments/${id}/reassign`, { user_id: userId });
 export const removeInvigilatorAssignment  = (id)                  => API.delete(`/invigilator-scheduling/assignments/${id}`);
 export const applyInvigilatorChanges      = (body)                => API.post('/invigilator-scheduling/apply-changes', body);
 export const clearInvigilatorSchedule     = (periodId)            => API.delete(`/invigilator-scheduling/schedule${periodId ? `?period_id=${periodId}` : ''}`);
+
+// Invigilation session archive
+export const saveInvigilationSession     = (body)             => API.post('/invigilator-scheduling/sessions/save', body);
+export const getInvigilationSessions     = ()                 => API.get('/invigilator-scheduling/sessions');
+export const getInvigilationSessionById  = (id)               => API.get(`/invigilator-scheduling/sessions/${id}`);
+export const deleteInvigilationSession   = (id)               => API.delete(`/invigilator-scheduling/sessions/${id}`);
 
 // User-self (used by the Profile tab — JWT only carries id/email/role, this
 // fills in employee_id + department + created_at).
@@ -137,6 +147,28 @@ export const getIncomingSwapRequests    = ()                 => API.get('/invigi
 export const getOutgoingSwapRequests    = (status = '')      => API.get(`/invigilator-scheduling/swap-requests/outgoing${status ? `?status=${status}` : ''}`);
 export const peerRespondToSwap          = (id, body)         => API.put(`/invigilator-scheduling/swap-requests/${id}/peer-respond`, body);
 export const cancelMySwapRequest        = (id)               => API.delete(`/invigilator-scheduling/swap-requests/${id}`);
+
+// Unfair-means case register (examination department only)
+const ufmParams = (obj) => ({ params: Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== '' && v != null)) });
+export const getUfmSessionStudents      = (slotId)                           => API.get('/unfair-means/session-students', ufmParams({ slot_id: slotId }));
+export const recordUnfairMeansCase      = (body)                             => API.post('/unfair-means', body);
+export const listUnfairMeansCases       = ({ q = '', status = '', periodId = '' } = {}) => API.get('/unfair-means', ufmParams({ q, status, period_id: periodId }));
+export const getUnfairMeansCase         = (id)                               => API.get(`/unfair-means/${id}`);
+export const updateUnfairMeansCase      = (id, body)                         => API.put(`/unfair-means/${id}`, body);
+export const reviewUnfairMeansCase      = (id, body)                         => API.put(`/unfair-means/${id}/review`, body);
+// photos: [{ blob, name, width, height, caption }] (already shrunk in the browser)
+export const uploadUfmPhotos = (id, photos) => {
+    const form = new FormData();
+    for (const p of photos) {
+        form.append('photos', p.blob, p.name);
+        form.append('widths', String(p.width || ''));
+        form.append('heights', String(p.height || ''));
+        form.append('captions', p.caption || '');
+    }
+    return API.post(`/unfair-means/${id}/photos`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const getUfmPhotoBlob            = (id, photoId)                      => API.get(`/unfair-means/${id}/photos/${photoId}`, { responseType: 'blob' });
+export const deleteUfmPhoto             = (id, photoId)                      => API.delete(`/unfair-means/${id}/photos/${photoId}`);
 
 // Admin swap moderation
 export const adminListSwapRequests      = (status = 'all')   => API.get(`/invigilator-scheduling/swap-requests?status=${status}`);

@@ -1,0 +1,89 @@
+@startuml fig3_10_invigilator_scheduling
+' Figure 3.10 - Sequence Diagram (Part 6): Invigilator schedule generation, review and save.
+' Same lifelines and look as Figs 3.5-3.9.
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign left
+skinparam ArrowColor #333333
+skinparam SequenceLifeLineBorderColor #999999
+skinparam SequenceGroupBorderColor #666666
+skinparam SequenceDividerBackgroundColor #FFFFFF
+skinparam NoteBackgroundColor #FFFDE7
+skinparam NoteBorderColor #B8A04A
+hide stereotype
+skinparam participant {
+  BackgroundColor<<ui>> #FDEDEC
+  BorderColor<<ui>> #C0392B
+  BackgroundColor<<api>> #EAF7EA
+  BorderColor<<api>> #2E8B57
+  BackgroundColor<<alg>> #FEF5E7
+  BorderColor<<alg>> #D68910
+}
+
+actor Admin
+participant "React UI" as UI <<ui>>
+participant "Express API" as API <<api>>
+participant "Algorithm Engine" as ALG <<alg>>
+database MySQL as DB
+
+== 7 · Invigilator Scheduling ==
+
+Admin -> UI : Open "Invigilator Scheduling"
+UI -> API : GET /invigilator-scheduling/progress
+API -> DB : COUNT slots with exams, seated slots,\nrole targets, duties, unstaffed rooms
+DB --> API : counts
+API --> UI : { steps }
+UI -> UI : Render progress tracker\n(Seating ready → Duty targets set →\nSchedule saved → All rooms staffed)
+
+Admin -> UI : Enter duties per role
+UI -> API : PUT /role-targets { targets[] }
+API -> DB : INSERT INTO invigilator_role_targets\nON DUPLICATE KEY UPDATE
+API --> UI : { success }
+
+Admin -> UI : Click "Generate Draft"
+UI -> API : POST /generate-preview
+API -> DB : SELECT slots + students per room\n(exam_slots JOIN scheduled_exams\nJOIN seating_allocations)
+API -> DB : SELECT course instructors per room\n(course_instructors JOIN users\nON employee_id)
+API -> DB : SELECT invigilators + role targets\n+ overrides + sibling-period balance
+DB --> API : rows
+note right of API
+  effective_target =
+  max(0, base_target − sibling balance)
+  (only when the sibling period
+  already has a saved schedule)
+end note
+API -> ALG : runInvigilatorAlgorithm(slots, roomLoad,\ninstructors, invigilators)
+activate ALG
+ALG -> ALG : Phase A: place course instructors\nin rooms holding their own course
+ALG -> ALG : Phase B: fill max(1, ceil(students/25))\nper room, most-behind-target first
+ALG --> API : { assignments[], summary, warnings }
+deactivate ALG
+API --> UI : proposal (no DB write)
+UI -> UI : Stage draft:\nremoves = current duties,\nadds = proposed duties
+
+loop Manual edits (optional)
+  Admin -> UI : Add / reassign / remove a duty
+  UI -> API : GET /eligible?slot_id=X
+  API -> DB : SELECT users not already\non duty in slot X
+  API --> UI : eligible[]
+end
+
+Admin -> UI : Click "Save Changes"
+UI -> API : POST /apply-changes\n{ reassigns, removes, adds }
+API -> DB : BEGIN
+API -> DB : DELETE removed duties
+API -> DB : UPDATE reassigned duties\n(reject if person already in slot)
+API -> DB : INSERT INTO invigilator_assignments\n(slot must belong to active period)
+API -> DB : COMMIT
+API --> UI : { applied }
+UI -> API : GET /progress
+API --> UI : all steps done
+UI -> UI : "Invigilation schedule complete"\ndialog + next step
+
+Admin -> UI : Past Invigilation → "Save" (name)
+UI -> API : POST /sessions/save { session_name }
+API -> DB : INSERT INTO invigilation_sessions
+API -> DB : INSERT INTO invigilation_session_duties\n(denormalized snapshot via SELECT ... JOIN)
+API --> UI : { session saved }
+@enduml

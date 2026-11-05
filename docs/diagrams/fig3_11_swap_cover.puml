@@ -1,0 +1,95 @@
+@startuml fig3_11_swap_cover
+' Figure 3.11 - Sequence Diagram (Part 7): Duty swap/cover request and approval.
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign left
+skinparam ArrowColor #333333
+skinparam SequenceLifeLineBorderColor #999999
+skinparam SequenceGroupBorderColor #666666
+skinparam SequenceDividerBackgroundColor #FFFFFF
+skinparam NoteBackgroundColor #FFFDE7
+skinparam NoteBorderColor #B8A04A
+hide stereotype
+skinparam participant {
+  BackgroundColor<<ui>> #FDEDEC
+  BorderColor<<ui>> #C0392B
+  BackgroundColor<<api>> #EAF7EA
+  BorderColor<<api>> #2E8B57
+  BackgroundColor<<alg>> #FEF5E7
+  BorderColor<<alg>> #D68910
+}
+
+actor "Invigilator A\n(requester)" as A
+actor "Invigilator B\n(colleague)" as B
+actor Admin
+participant "React UI" as UI <<ui>>
+participant "Express API" as API <<api>>
+database MySQL as DB
+
+== 8 · Duty Swap / Cover Request ==
+
+A -> UI : My Schedule → pick own duty →\n"Request swap / cover"
+UI -> API : GET /swap-eligible?my_assignment_id=X
+API -> DB : SELECT other duties in active period\nWHERE NOT EXISTS (clash for A or B)
+API --> UI : eligible duties / colleagues
+A -> UI : Choose B's duty (swap)\nor B (cover)
+UI -> API : POST /swap-requests\n{ request_type, requester_assignment_id,\ntarget_assignment_id or target_user_id, note }
+API -> DB : BEGIN
+API -> DB : SELECT both duty rows FOR UPDATE\n(ids sorted ascending: deadlock-safe)
+API -> API : Check: duty is A's, same period,\nnot with oneself
+API -> DB : SELECT open request for this pair\nFOR UPDATE (duplicate guard)
+API -> DB : SELECT 1 ... (would anyone be in\ntwo rooms in one slot?)
+API -> DB : INSERT INTO invigilator_swap_requests\n(status = 'pending_peer')
+API -> DB : COMMIT
+API --> UI : 201 { request }
+
+opt A cancels before B responds
+  A -> UI : Outgoing Requests → Cancel
+  UI -> API : DELETE /swap-requests/:id
+  API -> DB : UPDATE status = 'cancelled'\n(only while 'pending_peer')
+end
+
+== Colleague's response ==
+
+B -> UI : Open "Incoming Requests"
+UI -> API : GET /swap-requests/incoming
+API --> UI : requests[]
+B -> UI : Accept / Reject
+UI -> API : PUT /swap-requests/:id/peer-respond { accept }
+API -> DB : SELECT request FOR UPDATE\n(must be B's, status 'pending_peer')
+alt accept
+  API -> DB : UPDATE status = 'pending_admin'
+else reject
+  API -> DB : UPDATE status = 'rejected_by_peer' [final]
+end
+API --> UI : updated request
+
+== Examination department's decision ==
+
+Admin -> UI : Open "Swap Approval"
+UI -> API : GET /swap-requests (pending_admin queue)
+API --> UI : requests[]
+Admin -> UI : Approve / Reject (+ note)
+UI -> API : PUT /swap-requests/:id/admin-respond\n{ accept, note }
+API -> DB : BEGIN; SELECT request FOR UPDATE\n(must be 'pending_admin')
+alt reject
+  API -> DB : UPDATE status = 'rejected_by_admin'; COMMIT
+else approve
+  API -> DB : SELECT both duty rows FOR UPDATE
+  API -> API : Re-validate: owners unchanged,\nsame period, no double booking
+  alt still valid
+    alt swap
+      API -> DB : UPDATE invigilator_assignments:\nexchange user_id (slot + room stay);\nrecompute is_course_instructor
+    else cover
+      API -> DB : UPDATE invigilator_assignments\nSET user_id = B (B must be free in slot)
+    end
+    API -> DB : UPDATE status = 'approved'; COMMIT
+  else schedule changed meanwhile
+    API -> DB : UPDATE status = 'rejected_by_admin'\n(system note explains why); COMMIT
+  end
+end
+API --> UI : result
+UI --> A : Outgoing Requests + My Schedule updated
+UI --> B : Incoming Requests + My Schedule updated
+@enduml

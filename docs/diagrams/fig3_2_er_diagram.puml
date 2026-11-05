@@ -1,0 +1,263 @@
+@startuml fig3_2_er_diagram
+' Figure 3.2 - Entity-Relationship Diagram of the 22-table schema (from backend/schema.sql).
+!pragma layout smetana
+!theme plain
+hide circle
+left to right direction
+skinparam linetype ortho
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 11
+skinparam packageStyle folder
+skinparam nodesep 30
+skinparam ranksep 45
+
+package "User Authentication" {
+  entity users {
+    * id : INT <<PK>>
+    --
+    full_name : VARCHAR
+    email : VARCHAR <<UQ>>
+    password_hash : VARCHAR
+    role : ENUM(admin, faculty,\n  phd_student, lab_staff)
+    employee_id : VARCHAR <<UQ>>
+    department : VARCHAR
+  }
+}
+
+package "Exam Periods" {
+  entity exam_periods {
+    * id : INT <<PK>>
+    --
+    semester_label : VARCHAR
+    exam_type : ENUM(midterm, endterm)
+    is_active : BOOLEAN
+  }
+}
+
+package "Academic Master Data (per semester)" {
+  entity students {
+    * roll_number : VARCHAR <<PK>>
+    --
+    name : VARCHAR
+    email : VARCHAR
+    branch : VARCHAR
+    section_name : VARCHAR
+  }
+  entity courses {
+    * semester_label : VARCHAR <<PK>>
+    * course_code : VARCHAR <<PK>>
+    --
+    course_name : VARCHAR
+    short_name : VARCHAR
+    total_students : INT
+  }
+  entity course_enrollments {
+    * id : INT <<PK>>
+    --
+    roll_number : VARCHAR <<FK>>
+    course_code : VARCHAR
+    semester_label : VARCHAR
+  }
+  entity course_instructors {
+    * id : INT <<PK>>
+    --
+    course_code : VARCHAR
+    instructor_name : VARCHAR
+    employee_id : VARCHAR
+    semester_label : VARCHAR
+  }
+}
+
+package "Scheduling & Allocations" {
+  entity exam_slots {
+    * id : INT <<PK>>
+    --
+    exam_period_id : INT <<FK>>
+    exam_date : DATE
+    exam_day : VARCHAR
+    start_time : TIME
+    end_time : TIME
+  }
+  entity scheduled_exams {
+    * id : INT <<PK>>
+    --
+    slot_id : INT <<FK>>
+    course_code : VARCHAR
+  }
+  entity seating_allocations {
+    * id : INT <<PK>>
+    --
+    scheduled_exam_id : INT <<FK>>
+    classroom_id : INT <<FK>>
+    lane : CHAR
+    student_count : INT
+    room_mode : CHAR
+  }
+  entity individual_seating_plans {
+    * id : INT <<PK>>
+    --
+    allocation_id : INT <<FK>>
+    roll_number : VARCHAR <<FK>>
+    seat_number : VARCHAR
+  }
+}
+
+package "Physical Infrastructure" {
+  entity classrooms {
+    * id : INT <<PK>>
+    --
+    room_name : VARCHAR <<UQ>>
+    type : VARCHAR
+    cap_purple : INT
+    cap_green : INT
+    cap_yellow : INT
+    priority : INT
+    location_order : INT
+  }
+  entity classroom_seats {
+    * id : INT <<PK>>
+    --
+    classroom_id : INT <<FK>>
+    seat_number : VARCHAR
+    lane : VARCHAR
+    seq_order : INT
+  }
+}
+
+package "Invigilation" {
+  entity invigilator_role_targets {
+    * exam_period_id : INT <<PK, FK>>
+    * role : VARCHAR <<PK>>
+    --
+    target_duties : INT
+  }
+  entity invigilator_target_overrides {
+    * exam_period_id : INT <<PK, FK>>
+    * user_id : INT <<PK, FK>>
+    --
+    override_target : INT
+    note : VARCHAR
+  }
+  entity invigilator_assignments {
+    * id : INT <<PK>>
+    --
+    exam_period_id : INT <<FK>>
+    slot_id : INT <<FK>>
+    classroom_id : INT <<FK>>
+    user_id : INT <<FK>>
+    is_course_instructor : BOOLEAN
+  }
+  entity invigilator_swap_requests {
+    * id : INT <<PK>>
+    --
+    exam_period_id : INT <<FK>>
+    requester_user_id : INT <<FK>>
+    target_user_id : INT <<FK>>
+    requester_assignment_id : INT <<FK>>
+    target_assignment_id : INT <<FK>> (NULL = cover)
+    request_type : ENUM(swap, cover)
+    status : ENUM(pending_peer, pending_admin,\n  approved, rejected_by_peer,\n  rejected_by_admin, cancelled)
+    peer_responded_at / admin_responded_at
+  }
+}
+
+package "Unfair Means" {
+  entity unfair_means_cases {
+    * id : INT <<PK>>
+    --
+    exam_period_id, slot_id, classroom_id : INT <<FK>>
+    reported_by, witness_user_id : INT <<FK>>
+    recorded_by, decided_by : INT <<FK>>
+    roll_number, student_name, course_code,
+      room_name, seat_number ... (snapshot)
+    category : ENUM (8 values)
+    description : TEXT
+    material_seized : BOOLEAN
+    action_taken : ENUM (4 values)
+    status : ENUM(reported, under_review,\n  action_taken, dismissed)
+    decision_note : TEXT
+    decided_at : TIMESTAMP
+  }
+  entity unfair_means_photos {
+    * id : INT <<PK>>
+    --
+    case_id : INT <<FK>>
+    mime_type : VARCHAR
+    width, height : INT
+    caption : VARCHAR
+    data : MEDIUMBLOB
+    uploaded_by : INT <<FK>>
+  }
+}
+
+package "Historical Archival" {
+  entity exam_sessions {
+    * id : INT <<PK>>
+    --
+    exam_type : VARCHAR
+    semester_type : VARCHAR
+    academic_year : VARCHAR
+    saved_at : TIMESTAMP
+  }
+  entity exam_session_seating {
+    * id : INT <<PK>>
+    --
+    session_id : INT <<FK>>
+    exam_date, start_time, end_time
+    roll_number, student_name
+    course_code, course_name
+    room_name, seat_number, lane
+  }
+  entity invigilation_sessions {
+    * id : INT <<PK>>
+    --
+    exam_period_id : INT
+    session_name : VARCHAR
+    semester_label, exam_type
+    saved_at : TIMESTAMP
+  }
+  entity invigilation_session_duties {
+    * id : INT <<PK>>
+    --
+    session_id : INT <<FK>>
+    exam_date, start_time, end_time
+    room_name, full_name, role
+    is_course_instructor, course_codes
+  }
+}
+
+' --- academic ---
+students ||--o{ course_enrollments : takes
+courses ||--o{ course_enrollments : has enrollments
+courses ||--o{ course_instructors : taught by
+courses ||--o{ scheduled_exams : scheduled as
+
+' --- periods & scheduling ---
+exam_periods ||--o{ exam_slots : contains
+exam_slots ||--o{ scheduled_exams : hosts
+scheduled_exams ||--o{ seating_allocations : divided into
+classrooms ||--o{ seating_allocations : accommodates
+classrooms ||--o{ classroom_seats : contains
+seating_allocations ||--o{ individual_seating_plans : broken down to
+students ||--o{ individual_seating_plans : assigned to
+
+' --- invigilation ---
+exam_periods ||--o{ invigilator_role_targets : sets
+exam_periods ||--o{ invigilator_target_overrides
+users ||--o{ invigilator_target_overrides
+exam_periods ||--o{ invigilator_assignments
+users ||--o{ invigilator_assignments : invigilates
+exam_slots ||--o{ invigilator_assignments : staffed by
+classrooms ||--o{ invigilator_assignments
+invigilator_assignments ||--o{ invigilator_swap_requests : requested / target duty
+users ||--o{ invigilator_swap_requests : requests / is asked
+
+' --- unfair means ---
+exam_slots |o--o{ unfair_means_cases : happened in
+users |o--o{ unfair_means_cases : reported / decided by
+unfair_means_cases ||--o{ unfair_means_photos : evidence (max 5)
+
+' --- archives ---
+exam_sessions ||--o{ exam_session_seating : archives
+invigilation_sessions ||--o{ invigilation_session_duties : archives
+@enduml

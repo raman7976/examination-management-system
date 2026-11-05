@@ -1,0 +1,113 @@
+@startuml fig3_3_use_case
+' Figure 3.3 - Use Case Diagram (original packages kept; invigilation, unfair means and portal added).
+!pragma layout smetana
+!theme plain
+left to right direction
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 11
+skinparam packageStyle rectangle
+
+actor "Admin\n(Examination Dept.)" as Admin
+actor "Invigilator\n(Instructor / PhD Scholar\n/ Lab Staff)" as Inv
+
+rectangle "Examination Management System" {
+  package "Authentication" {
+    usecase "Authenticate / Log In" as UC_Login
+    usecase "Reset Password via OTP\n(also first-time activation)" as UC_Reset
+  }
+  package "Administration" {
+    usecase "Manage Exam Periods" as UC_Periods
+    usecase "Register Invigilators" as UC_Reg
+    usecase "Bulk Upload via Excel" as UC_Bulk
+    usecase "Wipe Semester Data\n(active exam period only)" as UC_Wipe
+  }
+  package "Data Ingestion" {
+    usecase "Ingest Academic Data" as UC_Ingest
+    usecase "Upload Course Master\n(.xlsx)" as UC_Course
+    usecase "Upload Student Enrollments\n(zip of .xlsx)" as UC_Enroll
+  }
+  package "Exam Scheduling" {
+    usecase "Manage Exam Slots" as UC_Slots
+    usecase "Schedule Exams\n(Assign Courses to Slots)" as UC_Sched
+  }
+  package "Seating Allocation" {
+    usecase "Generate Macro-Seating\nAllocation" as UC_Macro
+    usecase "Review & Upload Seating Excel\n(human-in-the-loop)" as UC_Review
+    usecase "Generate Micro-Seating\nAllocation (Zip Algorithm)" as UC_Micro
+  }
+  package "Reporting & Archival" {
+    usecase "Generate PDF Reports" as UC_PDF
+    usecase "Course-wise\nAttendance Sheet" as UC_CW
+    usecase "Hall-wise\nAttendance Sheet" as UC_HW
+    usecase "Archive Exam Session" as UC_Arch
+  }
+  package "Invigilation Management" {
+    usecase "Set Duty Targets\n& Overrides" as UC_Targets
+    usecase "Generate Invigilation\nSchedule" as UC_GenInv
+    usecase "Review & Edit Draft" as UC_Edit
+    usecase "Download Invigilation PDFs" as UC_InvPDF
+    usecase "Approve / Reject\nSwap or Cover" as UC_Approve
+    usecase "Archive Invigilation\nSchedule" as UC_ArchInv
+  }
+  package "Unfair Means (examination dept. only)" {
+    usecase "Record UFM Case" as UC_UFM
+    usecase "Upload Evidence Photos" as UC_Photos
+    usecase "Review / Decide Case" as UC_Decide
+    usecase "Download Case Report\n/ Register" as UC_UFMPDF
+  }
+  package "Invigilator Portal" {
+    usecase "View My Duties" as UC_MyDuty
+    usecase "View Full Schedule" as UC_Full
+    usecase "Request Duty\nSwap / Cover" as UC_Req
+    usecase "Accept / Reject\nIncoming Request" as UC_Incoming
+    usecase "Cancel Own Request" as UC_Cancel
+    usecase "View Past Duties\n& Profile" as UC_Past
+  }
+}
+
+Admin --> UC_Login
+Admin --> UC_Periods
+Admin --> UC_Reg
+Admin --> UC_Wipe
+Admin --> UC_Ingest
+Admin --> UC_Slots
+Admin --> UC_Sched
+Admin --> UC_Macro
+Admin --> UC_Micro
+Admin --> UC_PDF
+Admin --> UC_Arch
+UC_Wipe -[hidden]-> UC_Targets
+Admin --> UC_Targets
+Admin --> UC_GenInv
+Admin --> UC_InvPDF
+Admin --> UC_Approve
+Admin --> UC_ArchInv
+Admin --> UC_UFM
+Admin --> UC_Decide
+Admin --> UC_UFMPDF
+
+Inv --> UC_Login
+Inv --> UC_MyDuty
+Inv --> UC_Full
+Inv --> UC_Req
+Inv --> UC_Incoming
+Inv --> UC_Cancel
+Inv --> UC_Past
+
+UC_Reset .> UC_Login : <<extend>>
+UC_Reg ..> UC_Bulk : <<include>>
+UC_Ingest ..> UC_Course : <<include>>
+UC_Ingest ..> UC_Enroll : <<include>>
+UC_Review .> UC_Macro : <<extend>>
+UC_PDF ..> UC_CW : <<include>>
+UC_PDF ..> UC_HW : <<include>>
+UC_GenInv ..> UC_Edit : <<include>>
+UC_UFM ..> UC_Photos : <<include>>
+
+UC_Wipe -[hidden]-> UC_GenInv
+UC_Sched -[hidden]-> UC_UFM
+UC_Slots -[hidden]-> UC_Decide
+UC_Arch -[hidden]-> UC_Approve
+UC_Micro -[hidden]-> UC_InvPDF
+UC_Login -[hidden]-> UC_ArchInv
+@enduml

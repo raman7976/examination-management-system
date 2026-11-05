@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { adminListSwapRequests, adminRespondToSwap } from '../api/api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -82,8 +82,6 @@ export default function SwapApproval() {
 
   return (
     <div className="max-w-[1300px]">
-      <ToastContainer position="top-right" autoClose={4000} />
-
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-brand-500 tracking-tight">Swap Approval</h1>
         <p className="text-sm text-textMuted mt-1">

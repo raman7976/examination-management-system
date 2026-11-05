@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getIncomingSwapRequests, peerRespondToSwap } from '../../api/api.js';
 
@@ -58,7 +58,6 @@ export default function IncomingRequests() {
 
   return (
     <div className="max-w-[1100px]">
-      <ToastContainer position="top-right" autoClose={3000} />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-brand-500 tracking-tight">Incoming Swap Requests</h1>
         <p className="text-sm text-textMuted mt-1">

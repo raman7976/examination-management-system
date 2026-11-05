@@ -171,7 +171,7 @@ DROP TABLE IF EXISTS `exam_sessions`;
 CREATE TABLE `exam_sessions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `exam_type` varchar(50) NOT NULL,
-  `semester_type` varchar(10) NOT NULL,
+  `semester_type` varchar(20) NOT NULL,
   `academic_year` varchar(10) NOT NULL,
   `saved_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `total_students` int DEFAULT '0',
@@ -400,6 +400,142 @@ CREATE TABLE `users` (
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `employee_id` (`employee_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=353 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `invigilation_sessions` (added by migrations/2026-09-21_invigilation_sessions.sql)
+--
+
+DROP TABLE IF EXISTS `invigilation_sessions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `invigilation_sessions` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `exam_period_id` int NOT NULL,
+  `session_name` varchar(150) NOT NULL,
+  `semester_label` varchar(50) NOT NULL,
+  `exam_type` varchar(20) NOT NULL,
+  `total_assignments` int NOT NULL DEFAULT 0,
+  `total_invigilators` int NOT NULL DEFAULT 0,
+  `saved_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_inv_session_period` (`exam_period_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `invigilation_session_duties` (added by migrations/2026-09-21_invigilation_sessions.sql)
+--
+
+DROP TABLE IF EXISTS `invigilation_session_duties`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `invigilation_session_duties` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `session_id` int NOT NULL,
+  `slot_id` int DEFAULT NULL,
+  `exam_date` date DEFAULT NULL,
+  `exam_day` varchar(20) DEFAULT NULL,
+  `start_time` time DEFAULT NULL,
+  `end_time` time DEFAULT NULL,
+  `classroom_id` int DEFAULT NULL,
+  `room_name` varchar(50) DEFAULT NULL,
+  `user_id` int DEFAULT NULL,
+  `full_name` varchar(100) DEFAULT NULL,
+  `employee_id` varchar(50) DEFAULT NULL,
+  `role` varchar(20) DEFAULT NULL,
+  `is_course_instructor` tinyint(1) NOT NULL DEFAULT 0,
+  `course_codes` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_inv_duty_session` (`session_id`),
+  KEY `idx_inv_duty_user` (`user_id`),
+  CONSTRAINT `fk_inv_duty_session` FOREIGN KEY (`session_id`) REFERENCES `invigilation_sessions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `unfair_means_cases` (added by migrations/2026-10-29_unfair_means.sql, recorded_by by 2026-10-30_unfair_means_photos.sql)
+--
+
+DROP TABLE IF EXISTS `unfair_means_cases`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `unfair_means_cases` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `exam_period_id` int DEFAULT NULL,
+  `semester_label` varchar(50) NOT NULL,
+  `exam_type` varchar(20) NOT NULL,
+  `slot_id` int DEFAULT NULL,
+  `exam_date` date NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `classroom_id` int DEFAULT NULL,
+  `room_name` varchar(50) DEFAULT NULL,
+  `seat_number` varchar(10) DEFAULT NULL,
+  `roll_number` varchar(20) NOT NULL,
+  `student_name` varchar(100) DEFAULT NULL,
+  `course_code` varchar(50) NOT NULL,
+  `course_name` varchar(150) DEFAULT NULL,
+  `category` enum('chits_notes','electronic_device','copying_from_candidate','communication','impersonation','writing_on_body_or_desk','misbehaviour','other') NOT NULL,
+  `incident_time` time DEFAULT NULL,
+  `description` text NOT NULL,
+  `material_seized` tinyint(1) NOT NULL DEFAULT '0',
+  `material_description` varchar(500) DEFAULT NULL,
+  `action_taken` enum('answer_book_seized_new_issued','answer_book_seized','warned_allowed_to_continue','sent_out_of_hall') NOT NULL,
+  `student_statement` text DEFAULT NULL,
+  `reported_by` int DEFAULT NULL,
+  `reported_by_name` varchar(100) NOT NULL,
+  `witness_user_id` int DEFAULT NULL,
+  `witness_name` varchar(100) DEFAULT NULL,
+  `status` enum('reported','under_review','action_taken','dismissed') NOT NULL DEFAULT 'reported',
+  `decision_note` text DEFAULT NULL,
+  `decided_by` int DEFAULT NULL,
+  `decided_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `recorded_by` int DEFAULT NULL,
+  `recorded_by_name` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_ufm_slot_student` (`slot_id`, `roll_number`),
+  KEY `idx_ufm_roll` (`roll_number`),
+  KEY `idx_ufm_period_status` (`exam_period_id`, `status`),
+  KEY `idx_ufm_reporter` (`reported_by`),
+  KEY `idx_ufm_witness` (`witness_user_id`),
+  CONSTRAINT `fk_ufm_period`    FOREIGN KEY (`exam_period_id`)  REFERENCES `exam_periods` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_ufm_slot`      FOREIGN KEY (`slot_id`)         REFERENCES `exam_slots` (`id`)   ON DELETE SET NULL,
+  CONSTRAINT `fk_ufm_classroom` FOREIGN KEY (`classroom_id`)    REFERENCES `classrooms` (`id`)   ON DELETE SET NULL,
+  CONSTRAINT `fk_ufm_reporter`  FOREIGN KEY (`reported_by`)     REFERENCES `users` (`id`)        ON DELETE SET NULL,
+  CONSTRAINT `fk_ufm_witness`   FOREIGN KEY (`witness_user_id`) REFERENCES `users` (`id`)        ON DELETE SET NULL,
+  CONSTRAINT `fk_ufm_decider`   FOREIGN KEY (`decided_by`)      REFERENCES `users` (`id`)        ON DELETE SET NULL,
+  CONSTRAINT `fk_ufm_recorder` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `unfair_means_photos` (added by migrations/2026-10-30_unfair_means_photos.sql)
+--
+
+DROP TABLE IF EXISTS `unfair_means_photos`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `unfair_means_photos` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `case_id` int NOT NULL,
+  `mime_type` varchar(20) NOT NULL,
+  `size_bytes` int NOT NULL,
+  `width` int DEFAULT NULL,
+  `height` int DEFAULT NULL,
+  `original_name` varchar(255) DEFAULT NULL,
+  `caption` varchar(255) DEFAULT NULL,
+  `data` mediumblob NOT NULL,
+  `uploaded_by` int DEFAULT NULL,
+  `uploaded_by_name` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ufm_photo_case` (`case_id`),
+  CONSTRAINT `fk_ufm_photo_case` FOREIGN KEY (`case_id`) REFERENCES `unfair_means_cases` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ufm_photo_uploader` FOREIGN KEY (`uploaded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

@@ -23,12 +23,16 @@ function extractYearFromLabel(label) {
     return m ? m[1] : null;
 }
 
-// Parse "Even 2024-25" → "Even" (or "Odd"); returns null if neither token present
+// Parse "Even 2024-25" → "Even" (or "Odd" / "Summer Term"); returns null if
+// no recognized token is present. Checked before Even/Odd since "Summer Term"
+// periods never contain those words, so order doesn't matter, but this keeps
+// the three checks visually grouped with the dropdown's option order below.
 function extractSemesterFromLabel(label) {
     if (!label) return null;
     const lower = label.toLowerCase();
     if (lower.includes('odd')) return 'Odd';
     if (lower.includes('even')) return 'Even';
+    if (lower.includes('summer')) return 'Summer Term';
     return null;
 }
 
@@ -517,7 +521,11 @@ export default function CourseSeatingPDF() {
     };
 
     // ── Build dynamic PDF title ──
-    const pdfTitle = `Seating Plan/Attendance Sheet of ${examType} (${semesterType} Semester ${academicYear})`;
+    // "Summer Term" already reads as a complete term name on its own — appending
+    // "Semester" would print "Summer Term Semester", so that suffix only applies
+    // to Even/Odd.
+    const semesterSuffix = semesterType === 'Summer Term' ? '' : ' Semester';
+    const pdfTitle = `Seating Plan/Attendance Sheet of ${examType} (${semesterType}${semesterSuffix} ${academicYear})`;
 
     // ── Save session handler ──
     const handleSaveSession = async () => {
@@ -590,6 +598,7 @@ export default function CourseSeatingPDF() {
                             className="w-full px-3 py-2.5 text-sm rounded-lg border border-border bg-surface2 text-text focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40 cursor-pointer">
                             <option value="Even">Even Semester</option>
                             <option value="Odd">Odd Semester</option>
+                            <option value="Summer Term">Summer Term</option>
                         </select>
                     </div>
                     <div>
