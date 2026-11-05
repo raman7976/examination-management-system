@@ -1,0 +1,189 @@
+@startuml fig3_4_class_diagram
+' Figure 3.4 - Class Diagram (original selection kept; invigilation, swap and unfair-means classes added).
+!pragma layout smetana
+!theme plain
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 11
+skinparam packageStyle folder
+skinparam classAttributeIconSize 0
+set separator none
+left to right direction
+
+package "Frontend (React + Vite)" {
+  class "AddCourse.jsx" as AddCourse <<Page>> {
+    -courseFile : File
+    -enrollmentFile : File
+    +handleCourseUpload()
+    +handleEnrollmentUpload()
+    +handleResetData()
+  }
+  class "SmartScheduling.jsx" as Smart <<Page>> {
+    -activeSlotId : number
+    -selectedCodes : Set<string>
+    +toggleCourse(code)
+    +handleAssign()
+  }
+  class "SeatingManager.jsx" as SeatMgr <<Page>> {
+    -slotRoomConfig : {slot_id: number[]}
+    -pendingFile : File
+    +handleGenerateExport()
+    +handleConfirmUpload()
+  }
+  class "SeatingArrangement.jsx" as SeatArr <<Page>> {
+    -selectedSlotId : string
+    +handleGenerateMicroPlan()
+    +handleExportRoom()
+  }
+  class "CourseSeatingPDF.jsx" as CoursePDF <<Page>> {
+    -viewMode : 'course' / 'hall'
+    +handleDownloadPDF()
+    +handleDownloadHallPDF()
+    +handleSaveSession()
+  }
+  class "InvigilatorScheduling.jsx" as InvSched <<Page>> {
+    -activeTab : targets / schedule / ...
+    -liveDraft : {reassigns, removes, adds}
+    -progress : steps
+    +handleGenerate()
+    +handleSave()
+  }
+  class "SwapApproval.jsx" as SwapAppr <<Page>> {
+    -pending : SwapRequest[]
+    +respond(id, accept)
+  }
+  class "UnfairMeansAdmin.jsx" as UfmPage <<Page>> {
+    -query, status : filters
+    +save()
+    +downloadReport()
+    +downloadRegister()
+  }
+  class "InvigilatorPortal.jsx" as Portal <<Page>> {
+    MySchedule, IncomingRequests,
+    OutgoingRequests, PastDuties, Profile
+    +openSwap(duty)
+    +respond(id, accept)
+  }
+  class "api.js" as Api <<Axios Service>> {
+    +baseURL : "/api"
+    +loginUser() : POST /v1/user/login
+    +uploadCourses() : POST /upload/courses
+    +generateMicroPlan() : POST /seating/generate-plan
+    +previewInvigilatorSchedule() : POST /invigilator-scheduling/generate-preview
+    +createSwapRequest() : POST /invigilator-scheduling/swap-requests
+    +recordUnfairMeansCase() : POST /unfair-means
+  }
+}
+
+package "Backend (Node.js + Express)" {
+  class "middleware1.js" as Mw <<Middleware>> {
+    +protect(req, res, next)
+    +requireAdmin(req, res, next)
+    +requireInvigilator(req, res, next)
+    -jwt.verify(token, JWT_SECRET)
+  }
+  class "rateLimiters.js" as Rl <<Middleware>> {
+    +loginLimiter
+    +otpRequestLimiter
+    +resetLimiter
+  }
+  class "uploadController.js" as UploadC <<Controller>> {
+    +uploadCourses(req, res)
+    +uploadEnrollments(req, res)
+    +resetSemesterData(req, res)
+  }
+  class "examController.js" as ExamC <<Controller>> {
+    +generateAndExportAllSeating(req, res)
+    +uploadAndSaveSeating(req, res)
+    +getSeatingStatus(req, res)
+  }
+  class "seatingController.js" as SeatC <<Controller>> {
+    +generateMicroPlan(req, res)
+    +getPlanView(req, res)
+  }
+  class "examSessionController.js" as SessC <<Controller>> {
+    +saveSession(req, res)
+  }
+  class "invigilatorSchedulingController.js" as InvC <<Controller>> {
+    +updateRoleTargets(req, res)
+    +previewSchedule(req, res)
+    +applyChanges(req, res)
+    +getScheduleProgress(req, res)
+  }
+  class "invigilatorSwapController.js" as SwapC <<Controller>> {
+    +createSwapRequest(req, res)
+    +peerRespondToSwap(req, res)
+    +adminRespondToSwap(req, res)
+  }
+  class "unfairMeansController.js" as UfmC <<Controller>> {
+    +createCase(req, res)
+    +uploadPhotos(req, res)
+    +reviewCase(req, res)
+  }
+  class "seatingAlgorithm.js" as SeatAlg <<Pure Function>> {
+    +runSeatingAlgorithm(rooms, courses, ids)
+    -allocateIdeally(room, course, isGiant, rem)
+    -allocateOverflow(room, course, rem)
+  }
+  class "invigilatorAlgorithm.js" as InvAlg <<Pure Function>> {
+    +runInvigilatorAlgorithm(slots, roomLoad,\n  instructors, invigilators)
+    Phase A: instructors in own rooms
+    Phase B: deficit-first fill
+  }
+}
+
+package "Domain Models (MySQL)" {
+  class courses <<Table>>
+  class students <<Table>>
+  class course_enrollments <<Table>>
+  class classrooms <<Table>>
+  class classroom_seats <<Table>>
+  class seating_allocations <<Table>>
+  class individual_seating_plans <<Table>>
+  class exam_session_seating <<Table>>
+  class exam_periods <<Table>>
+  class invigilator_role_targets <<Table>>
+  class invigilator_assignments <<Table>>
+  class invigilator_swap_requests <<Table>>
+  class unfair_means_cases <<Table>>
+  class unfair_means_photos <<Table>>
+}
+
+AddCourse --> Api : uploadCourses()\nuploadEnrollments()
+Smart --> Api : assignCoursesToSlot()
+SeatMgr --> Api : POST /generate-export\nPOST /upload-seating
+SeatArr --> Api : generateMicroPlan()\ngetPlanView()
+CoursePDF --> Api : getPlanView()\nsaveExamSession()
+InvSched --> Api : generate-preview\napply-changes
+SwapAppr --> Api : admin-respond
+UfmPage --> Api : unfair-means/*
+Portal --> Api : my-schedule\nswap-requests
+
+Api --> Rl : login / OTP
+Api --> Mw : JWT token attached\nvia interceptor
+Mw --> UploadC : protects
+Mw --> ExamC : protects
+Mw --> SeatC : protects
+Mw --> SessC : protects
+Mw --> InvC : requireAdmin
+Mw --> SwapC : requireInvigilator /\nrequireAdmin
+Mw --> UfmC : requireAdmin
+
+ExamC --> SeatAlg : calls
+InvC --> InvAlg : calls
+
+UploadC --> courses : INSERT ON DUPLICATE KEY
+UploadC --> course_enrollments : INSERT IGNORE
+UploadC --> students : INSERT IGNORE
+ExamC --> classrooms : SELECT *
+ExamC --> seating_allocations : DELETE + INSERT
+SeatC --> classroom_seats : SELECT ORDER BY seq_order
+SeatC --> individual_seating_plans : INSERT IGNORE
+SessC --> exam_session_seating : INSERT (snapshot)
+InvC --> exam_periods : resolve active period
+InvC --> invigilator_role_targets : UPSERT
+InvC --> invigilator_assignments : DELETE / UPDATE / INSERT
+SwapC --> invigilator_swap_requests : INSERT / UPDATE status
+SwapC --> invigilator_assignments : SELECT ... FOR UPDATE
+UfmC --> unfair_means_cases : INSERT / UPDATE
+UfmC --> unfair_means_photos : INSERT (MEDIUMBLOB)
+@enduml

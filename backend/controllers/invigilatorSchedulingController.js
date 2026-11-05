@@ -29,6 +29,120 @@ export async function isInstructorForRoom(connOrDb, userId, slotId, classroomId)
     return rows.length > 0;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Shared grid builder: slots[] → rooms[] → invigilators[] for one period.
+//  Used by the admin grid (getSchedule) and the invigilator read-only grid
+//  (getFullSchedule) so both views always agree.
+//
+//  Rooms come from seating_allocations (same aggregation the algorithm uses).
+//  An assignment whose room has NO seating in that slot (e.g. seating was
+//  re-uploaded after the schedule was saved) is still returned, under a room
+//  entry flagged `orphaned: true` — otherwise the duty would be invisible in
+//  the grid while still counting toward workload and blocking that person
+//  from being placed elsewhere in the slot.
+//
+//  Pass `meUserId` to decorate each chip with `is_me` (invigilator view).
+// ─────────────────────────────────────────────────────────────────────────────
+export async function loadScheduleGrid(connOrDb, periodId, { slotId = null, meUserId = null } = {}) {
+    const c = connOrDb || db;
+
+    const slotParams = [periodId];
+    let slotWhere = 'WHERE es.exam_period_id = ?';
+    if (slotId) { slotWhere += ' AND es.id = ?'; slotParams.push(Number(slotId)); }
+
+    const [slots] = await c.query(
+        `SELECT es.id AS slot_id, es.exam_date, es.exam_day, es.start_time, es.end_time
+         FROM exam_slots es
+         ${slotWhere}
+         ORDER BY es.exam_date, es.start_time`,
+        slotParams
+    );
+    if (slots.length === 0) return [];
+
+    const slotIds = slots.map(s => s.slot_id);
+    const ph = slotIds.map(() => '?').join(',');
+
+    const [roomRows] = await c.query(
+        `SELECT se.slot_id, sa.classroom_id, cl.room_name, cl.location_order,
+                SUM(sa.student_count) AS students_in_room,
+                GROUP_CONCAT(DISTINCT se.course_code ORDER BY se.course_code SEPARATOR ', ') AS course_codes
+         FROM seating_allocations sa
+         JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
+         JOIN classrooms cl      ON sa.classroom_id = cl.id
+         WHERE se.slot_id IN (${ph})
+         GROUP BY se.slot_id, sa.classroom_id, cl.room_name, cl.location_order
+         ORDER BY se.slot_id, cl.location_order`,
+        slotIds
+    );
+
+    const [assignRows] = await c.query(
+        `SELECT ia.id AS assignment_id, ia.slot_id, ia.classroom_id, ia.user_id,
+                ia.is_course_instructor, u.full_name, u.role, u.employee_id, u.department,
+                cl.room_name, cl.location_order
+         FROM invigilator_assignments ia
+         JOIN users u       ON ia.user_id = u.id
+         JOIN classrooms cl ON ia.classroom_id = cl.id
+         WHERE ia.slot_id IN (${ph}) AND ia.exam_period_id = ?
+         ORDER BY ia.slot_id, ia.classroom_id, u.full_name`,
+        [...slotIds, periodId]
+    );
+
+    const slotMap = new Map();
+    for (const s of slots) slotMap.set(s.slot_id, { ...s, rooms: [] });
+    const roomKey = (sid, cid) => `${sid}|${cid}`;
+    const roomMap = new Map();
+    for (const r of roomRows) {
+        const students = Number(r.students_in_room);
+        const entry = {
+            classroom_id:   r.classroom_id,
+            room_name:      r.room_name,
+            location_order: r.location_order,
+            students,
+            required:       Math.max(1, Math.ceil(students / 25)),
+            course_codes:   r.course_codes,
+            invigilators:   [],
+        };
+        roomMap.set(roomKey(r.slot_id, r.classroom_id), entry);
+        slotMap.get(r.slot_id).rooms.push(entry);
+    }
+
+    const slotsWithOrphans = new Set();
+    for (const a of assignRows) {
+        const k = roomKey(a.slot_id, a.classroom_id);
+        let room = roomMap.get(k);
+        if (!room) {
+            room = {
+                classroom_id:   a.classroom_id,
+                room_name:      a.room_name,
+                location_order: a.location_order,
+                students:       0,
+                required:       0,
+                course_codes:   '',
+                orphaned:       true,
+                invigilators:   [],
+            };
+            roomMap.set(k, room);
+            slotMap.get(a.slot_id).rooms.push(room);
+            slotsWithOrphans.add(a.slot_id);
+        }
+        room.invigilators.push({
+            assignment_id:        a.assignment_id,
+            user_id:              a.user_id,
+            full_name:            a.full_name,
+            role:                 a.role,
+            employee_id:          a.employee_id,
+            department:           a.department,
+            is_course_instructor: !!a.is_course_instructor,
+            ...(meUserId != null ? { is_me: a.user_id === meUserId } : {}),
+        });
+    }
+    for (const sid of slotsWithOrphans) {
+        slotMap.get(sid).rooms.sort((x, y) => x.location_order - y.location_order);
+    }
+
+    return Array.from(slotMap.values());
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  EXAM-PERIOD CRUD
 // ═════════════════════════════════════════════════════════════════════════════
@@ -575,11 +689,21 @@ async function _computeScheduleProposal(conn, periodId) {
         });
     }
 
+    // Carryover only applies once the sibling exam has actually been scheduled.
+    // createSemester always creates both periods, so the sibling row exists from
+    // day one — without this guard, generating the midterm would read the still
+    // empty endterm as "under target by its whole target" and inflate every
+    // midterm target by the endterm target.
     const [siblingRows] = await conn.query(
-        `SELECT id FROM exam_periods WHERE semester_label = ? AND exam_type != ?`,
+        `SELECT p.id,
+                (SELECT COUNT(*) FROM invigilator_assignments ia WHERE ia.exam_period_id = p.id) AS assigned
+         FROM exam_periods p
+         WHERE p.semester_label = ? AND p.exam_type != ?`,
         [period.semester_label, period.exam_type]
     );
-    const siblingId = siblingRows.length > 0 ? siblingRows[0].id : null;
+    const siblingId = siblingRows.length > 0 && Number(siblingRows[0].assigned) > 0
+        ? siblingRows[0].id
+        : null;
 
     const [invRows] = await conn.query(
         `SELECT
@@ -729,91 +853,98 @@ export const getSchedule = async (req, res) => {
         const periodId = await resolveActivePeriod(null, req.query.period_id);
         const period = await loadPeriod(null, periodId);
 
-        // Always scope slots by the active period. Without this filter the
-        // endpoint returned slots from EVERY period, so when the active period
-        // had no slots the UI rendered another period's slots underneath the
-        // active period's header — appearing to show data that wasn't really
-        // there. Optional `?slot_id=` narrows further (still inside the period).
-        const slotParams = [periodId];
-        let slotWhere = 'WHERE es.exam_period_id = ?';
-        if (slot_id) { slotWhere += ' AND es.id = ?'; slotParams.push(Number(slot_id)); }
-
-        const [slots] = await db.query(
-            `SELECT es.id AS slot_id, es.exam_date, es.exam_day, es.start_time, es.end_time
-             FROM exam_slots es
-             ${slotWhere}
-             ORDER BY es.exam_date, es.start_time`,
-            slotParams
-        );
-        if (slots.length === 0) return res.json({ success: true, exam_period: period, schedule: [] });
-
-        const slotIds = slots.map(s => s.slot_id);
-        const ph = slotIds.map(() => '?').join(',');
-
-        const [roomRows] = await db.query(
-            `SELECT se.slot_id, sa.classroom_id, c.room_name, c.location_order,
-                    SUM(sa.student_count) AS students_in_room,
-                    GROUP_CONCAT(DISTINCT co.course_code SEPARATOR ', ') AS course_codes
-             FROM seating_allocations sa
-             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
-             JOIN classrooms c       ON sa.classroom_id = c.id
-             JOIN exam_slots es      ON se.slot_id = es.id
-             JOIN exam_periods ep    ON ep.id = es.exam_period_id
-             JOIN courses co         ON se.course_code = co.course_code AND co.semester_label = ep.semester_label
-             WHERE se.slot_id IN (${ph})
-             GROUP BY se.slot_id, sa.classroom_id, c.room_name, c.location_order
-             ORDER BY se.slot_id, c.location_order`,
-            slotIds
-        );
-
-        const [assignRows] = await db.query(
-            `SELECT ia.id AS assignment_id, ia.slot_id, ia.classroom_id, ia.user_id,
-                    ia.is_course_instructor, u.full_name, u.role, u.employee_id
-             FROM invigilator_assignments ia
-             JOIN users u ON ia.user_id = u.id
-             WHERE ia.slot_id IN (${ph}) AND ia.exam_period_id = ?
-             ORDER BY ia.slot_id, ia.classroom_id, u.full_name`,
-            [...slotIds, periodId]
-        );
-
-        const slotMap = new Map();
-        for (const s of slots) slotMap.set(s.slot_id, { ...s, rooms: [] });
-        const roomKey = (sid, cid) => `${sid}|${cid}`;
-        const roomMap = new Map();
-        for (const r of roomRows) {
-            const k = roomKey(r.slot_id, r.classroom_id);
-            const students = Number(r.students_in_room);
-            const required = Math.max(1, Math.ceil(students / 25));
-            const entry = {
-                classroom_id:   r.classroom_id,
-                room_name:      r.room_name,
-                location_order: r.location_order,
-                students,
-                required,
-                course_codes:   r.course_codes,
-                invigilators:   [],
-            };
-            roomMap.set(k, entry);
-            slotMap.get(r.slot_id).rooms.push(entry);
-        }
-        for (const a of assignRows) {
-            const k = roomKey(a.slot_id, a.classroom_id);
-            const room = roomMap.get(k);
-            if (!room) continue;
-            room.invigilators.push({
-                assignment_id:        a.assignment_id,
-                user_id:              a.user_id,
-                full_name:            a.full_name,
-                role:                 a.role,
-                employee_id:          a.employee_id,
-                is_course_instructor: !!a.is_course_instructor,
-            });
-        }
-        res.json({ success: true, exam_period: period, schedule: Array.from(slotMap.values()) });
+        // Always scoped to the period; optional `?slot_id=` narrows further.
+        const schedule = await loadScheduleGrid(null, periodId, { slotId: slot_id || null });
+        res.json({ success: true, exam_period: period, schedule });
     } catch (err) {
         const status = err.http || 500;
         console.error('getSchedule error:', err);
         res.status(status).json({ success: false, message: err.message || 'Failed to fetch schedule.' });
+    }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GET /progress — where the active period stands in the invigilation workflow.
+//  Drives the progress tracker on the Invigilator Scheduling page:
+//    seating ready → duty targets set → schedule saved → every room staffed.
+//  Counts come from the same grid the admin sees, so they always agree.
+// ═════════════════════════════════════════════════════════════════════════════
+export const getScheduleProgress = async (req, res) => {
+    try {
+        const periodId = await resolveActivePeriod(null, req.query.period_id);
+        const grid = await loadScheduleGrid(null, periodId);
+
+        let seatedRooms = 0, requiredTotal = 0, unfilled = 0, understaffedRooms = 0;
+        let unassignedRooms = 0, orphanDuties = 0, duties = 0, slotsWithSeating = 0;
+        const people = new Set();
+        for (const slot of grid) {
+            let slotHasSeating = false;
+            for (const room of slot.rooms) {
+                duties += room.invigilators.length;
+                room.invigilators.forEach(i => people.add(i.user_id));
+                if (room.orphaned) {
+                    orphanDuties += room.invigilators.length;
+                    continue;
+                }
+                slotHasSeating = true;
+                seatedRooms += 1;
+                requiredTotal += room.required;
+                const short = Math.max(0, room.required - room.invigilators.length);
+                unfilled += short;
+                if (short > 0) understaffedRooms += 1;
+                if (room.invigilators.length === 0) unassignedRooms += 1;
+            }
+            if (slotHasSeating) slotsWithSeating += 1;
+        }
+
+        // Slots that hold at least one exam — only these need seating (and so
+        // invigilators). Comparing against all slots would flag empty slots.
+        const [[examSlots]] = await db.query(
+            `SELECT COUNT(DISTINCT es.id) AS n
+             FROM exam_slots es JOIN scheduled_exams se ON se.slot_id = es.id
+             WHERE es.exam_period_id = ?`,
+            [periodId]
+        );
+
+        const [targetRows] = await db.query(
+            'SELECT role, target_duties FROM invigilator_role_targets WHERE exam_period_id = ?',
+            [periodId]
+        );
+        const targets = { faculty: 0, phd_student: 0, lab_staff: 0 };
+        for (const t of targetRows) targets[t.role] = Number(t.target_duties);
+
+        const [[swaps]] = await db.query(
+            `SELECT COALESCE(SUM(status = 'pending_admin'), 0) AS pending_admin,
+                    COALESCE(SUM(status = 'pending_peer'), 0)  AS pending_peer
+             FROM invigilator_swap_requests WHERE exam_period_id = ?`,
+            [periodId]
+        );
+
+        res.json({
+            success: true,
+            exam_period_id: periodId,
+            seating:  {
+                slots_total:        grid.length,
+                slots_with_exams:   Number(examSlots.n),
+                slots_with_seating: slotsWithSeating,
+                rooms:              seatedRooms,
+            },
+            targets,
+            schedule: {
+                duties,
+                invigilators:       people.size,
+                required:           requiredTotal,
+                unfilled_positions: unfilled,
+                understaffed_rooms: understaffedRooms,
+                unassigned_rooms:   unassignedRooms,
+                orphan_duties:      orphanDuties,
+            },
+            swaps: { pending_admin: Number(swaps.pending_admin), pending_peer: Number(swaps.pending_peer) },
+        });
+    } catch (err) {
+        const status = err.http || 500;
+        console.error('getScheduleProgress error:', err);
+        res.status(status).json({ success: false, message: err.message || 'Failed to load progress.' });
     }
 };
 
@@ -897,11 +1028,20 @@ export const applyChanges = async (req, res) => {
             reassignedCount += u.affectedRows;
         }
 
+        // Adds carry raw slot ids from the client — make sure every one belongs
+        // to this period, so a stale draft can't write into another period.
+        const [periodSlots] = adds.length > 0
+            ? await conn.query('SELECT id FROM exam_slots WHERE exam_period_id = ?', [periodId])
+            : [[]];
+        const periodSlotIds = new Set(periodSlots.map(s => s.id));
+
         for (const a of adds) {
             const slotId = Number(a.slot_id);
             const classroomId = Number(a.classroom_id);
             const userId = Number(a.user_id);
             if (!slotId || !classroomId || !userId) continue;
+            if (!periodSlotIds.has(slotId))
+                throw Object.assign(new Error(`Slot ${slotId} does not belong to this exam period.`), { http: 400 });
             const [busy] = await conn.query(
                 'SELECT id FROM invigilator_assignments WHERE slot_id = ? AND user_id = ? AND exam_period_id = ?',
                 [slotId, userId, periodId]
@@ -998,6 +1138,15 @@ export const addAssignment = async (req, res) => {
         return res.status(400).json({ success: false, message: 'slot_id, classroom_id, user_id are required.' });
     try {
         const periodId = await resolveActivePeriod(null, period_id);
+        const [slotRows] = await db.query(
+            'SELECT id FROM exam_slots WHERE id = ? AND exam_period_id = ?',
+            [Number(slot_id), periodId]
+        );
+        if (slotRows.length === 0)
+            return res.status(400).json({ success: false, message: 'Slot does not belong to this exam period.' });
+        const [users] = await db.query("SELECT id FROM users WHERE id = ? AND role != 'admin'", [Number(user_id)]);
+        if (users.length === 0)
+            return res.status(404).json({ success: false, message: 'Invigilator not found or is admin.' });
         const [busy] = await db.query(
             'SELECT id FROM invigilator_assignments WHERE slot_id = ? AND user_id = ? AND exam_period_id = ?',
             [slot_id, user_id, periodId]
@@ -1021,10 +1170,17 @@ export const addAssignment = async (req, res) => {
     }
 };
 
-// GET /eligible?slot_id=&exclude_assignment_id=&period_id=
+// GET /eligible?slot_id=&exclude_assignment_id=&period_id=&include_busy=
+//
+// Default: everyone NOT already placed in the slot (saved data).
+// include_busy=1: everyone, each with `busy_assignment_id` (their saved duty in
+// this slot, or null). The admin grid uses this while editing a draft, where
+// the saved state is not the truth — a person staged for removal is free, and
+// a person staged as an add is busy — so the client filters against its draft.
 export const getEligibleForSlot = async (req, res) => {
     const slotId = Number(req.query.slot_id);
     const excludeAssignmentId = req.query.exclude_assignment_id ? Number(req.query.exclude_assignment_id) : null;
+    const includeBusy = ['1', 'true'].includes(String(req.query.include_busy || '').toLowerCase());
     if (!slotId) return res.status(400).json({ success: false, message: 'slot_id is required.' });
 
     try {
@@ -1037,19 +1193,24 @@ export const getEligibleForSlot = async (req, res) => {
             busyClause += ' AND id != ?';
             busyParams.push(excludeAssignmentId);
         }
-        // Placeholder order in the SQL below: the three enrichment `?` (assigned_count
-        // subquery + the two LEFT JOINs) come FIRST, then the busy subquery's `?`s.
-        const params = [periodId, periodId, periodId, ...busyParams];
+        // Placeholder order in the SQL below: busy_assignment_id subquery, then the
+        // three enrichment `?` (assigned_count subquery + the two LEFT JOINs), then
+        // (default mode only) the busy filter's `?`s.
+        const params = [slotId, periodId, periodId, periodId, periodId];
+        if (!includeBusy) params.push(...busyParams);
 
         const [rows] = await db.query(
             `SELECT u.id AS user_id, u.full_name, u.role, u.employee_id, u.department,
+                    (SELECT ia3.id FROM invigilator_assignments ia3
+                      WHERE ia3.slot_id = ? AND ia3.exam_period_id = ? AND ia3.user_id = u.id
+                      LIMIT 1) AS busy_assignment_id,
                     COALESCE(ov.override_target, rt.target_duties, 0) AS effective_target,
                     (SELECT COUNT(*) FROM invigilator_assignments ia2 WHERE ia2.user_id = u.id AND ia2.exam_period_id = ?) AS assigned_count
              FROM users u
              LEFT JOIN invigilator_role_targets     rt ON rt.role = u.role AND rt.exam_period_id = ?
              LEFT JOIN invigilator_target_overrides ov ON ov.user_id = u.id AND ov.exam_period_id = ?
              WHERE u.role != 'admin'
-               AND u.id NOT IN (${busyClause})
+               ${includeBusy ? '' : `AND u.id NOT IN (${busyClause})`}
              ORDER BY u.full_name ASC`,
             params
         );

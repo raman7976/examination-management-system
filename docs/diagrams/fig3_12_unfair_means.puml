@@ -1,0 +1,82 @@
+@startuml fig3_12_unfair_means
+' Figure 3.12 - Sequence Diagram (Part 8): Recording an unfair-means case with evidence photos.
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign left
+skinparam ArrowColor #333333
+skinparam SequenceLifeLineBorderColor #999999
+skinparam SequenceGroupBorderColor #666666
+skinparam SequenceDividerBackgroundColor #FFFFFF
+skinparam NoteBackgroundColor #FFFDE7
+skinparam NoteBorderColor #B8A04A
+hide stereotype
+skinparam participant {
+  BackgroundColor<<ui>> #FDEDEC
+  BorderColor<<ui>> #C0392B
+  BackgroundColor<<api>> #EAF7EA
+  BorderColor<<api>> #2E8B57
+  BackgroundColor<<alg>> #FEF5E7
+  BorderColor<<alg>> #D68910
+}
+
+actor Admin
+participant "React UI" as UI <<ui>>
+participant "Express API" as API <<api>>
+database MySQL as DB
+
+== 9 · Unfair Means Case (examination department only) ==
+
+Admin -> UI : Unfair Means → "Record a case"\n→ select exam session
+UI -> API : GET /unfair-means/session-students?slot_id=X
+API -> DB : SELECT students seated in slot X\n(individual_seating_plans JOIN seating_allocations\nJOIN classrooms JOIN students)
+API -> DB : SELECT courses in slot X without a seating plan\n(course_enrollments; room / seat unknown)
+API -> DB : SELECT invigilators on duty in slot X
+API --> UI : { students[], on_duty[] }
+Admin -> UI : Pick student, reporting invigilator, witness;\nfill category, time, description,\nmaterial seized, action taken
+UI -> API : POST /unfair-means\n{ slot_id, roll_number, reported_by_user_id, ... }
+API -> DB : BEGIN
+API -> DB : Look up the student's course, room and\nseat in slot X (404 if not writing)
+API -> DB : SELECT case WHERE slot_id, roll_number\n(409 if one already exists)
+API -> DB : INSERT INTO unfair_means_cases\n(snapshot of student, course, room, seat;\nstatus = 'reported', recorded_by = admin)
+API -> DB : COMMIT
+API --> UI : { case: UFM-<year>-<id> }
+
+Admin -> UI : Attach evidence photos (≤ 5)
+UI -> UI : compressImage(): longest side\n≤ 1600 px, JPEG
+UI -> API : POST /unfair-means/:id/photos\n(multipart: photos[], widths[], heights[], captions[])
+API -> API : multer limits: ≤ 5 files, ≤ 5 MB each;\nsniffImage(): JPEG / PNG signature only
+API -> DB : BEGIN; SELECT case FOR UPDATE\n(409 if the case is closed)
+API -> DB : COUNT existing photos\n(400 if the total would exceed 5)
+API -> DB : INSERT INTO unfair_means_photos\n(data MEDIUMBLOB)
+API -> DB : COMMIT
+API --> UI : { photos[] }
+
+== Review and decision ==
+
+Admin -> UI : Set status / record decision
+UI -> API : PUT /unfair-means/:id/review\n{ status, decision_note }
+API -> API : Final status (action_taken / dismissed)\nneeds a decision note
+API -> DB : UPDATE unfair_means_cases SET status,\ndecision_note, decided_by, decided_at
+API --> UI : updated case
+note right of UI
+  Closed case: details and photos
+  are locked until it is reopened
+  (status back to under_review).
+  Cases are never deleted.
+end note
+
+== Case report PDF ==
+
+Admin -> UI : Open case → "Download report"
+UI -> API : GET /unfair-means/:id
+API -> DB : SELECT case + photo list
+API --> UI : case
+loop each photo
+  UI -> API : GET /unfair-means/:id/photos/:photoId
+  API -> DB : SELECT mime_type, data
+  API --> UI : image bytes
+end
+UI -> UI : jsPDF: case report, signature blocks,\nphoto annexure (2 per page)
+UI --> Admin : UFM-<year>-<id> report (PDF)
+@enduml

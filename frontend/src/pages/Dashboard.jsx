@@ -11,6 +11,8 @@ import {
   ArrowLeftRight,
   FileText,
   Archive,
+  ClipboardList,
+  ShieldAlert,
   LogOut,
 } from 'lucide-react';
 
@@ -57,13 +59,15 @@ const NAV_SECTIONS = [
     items: [
       { path: '/dashboard/invigilator-scheduling', name: 'Invigilator Scheduling', icon: Users },
       { path: '/dashboard/swap-approval',          name: 'Swap Approval',          icon: ArrowLeftRight },
+      { path: '/dashboard/unfair-means',           name: 'Unfair Means',           icon: ShieldAlert },
     ],
   },
   {
     label: 'Reports',
     items: [
-      { path: '/dashboard/pdf-reports', name: 'PDF Reports', icon: FileText },
-      { path: '/dashboard/past-exams',  name: 'Past Exams',  icon: Archive },
+      { path: '/dashboard/pdf-reports',        name: 'PDF Reports',        icon: FileText },
+      { path: '/dashboard/past-exams',         name: 'Past Exams',         icon: Archive },
+      { path: '/dashboard/past-invigilation',  name: 'Past Invigilation',  icon: ClipboardList },
     ],
   },
 ];

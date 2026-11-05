@@ -1,8 +1,14 @@
-// Small pill that renders the swap-request status in a colour-coded chip.
-// Used across IncomingRequests / OutgoingRequests / SwapApproval so the
-// language and palette stay consistent.
+// Small pill that renders a status in a colour-coded chip.
+// Used for swap requests (IncomingRequests / OutgoingRequests / SwapApproval)
+// and unfair-means cases, so the language and palette stay consistent.
 
 const STATUS_STYLES = {
+  // Unfair-means cases
+  reported:         { bg: 'bg-amber-100',  text: 'text-amber-800',  label: 'Reported'         },
+  under_review:     { bg: 'bg-blue-100',   text: 'text-blue-800',   label: 'Under review'     },
+  action_taken:     { bg: 'bg-red-100',    text: 'text-red-800',    label: 'Action taken'     },
+  dismissed:        { bg: 'bg-slate-100',  text: 'text-slate-600',  label: 'Dismissed'        },
+  // Swap requests
   pending_peer:     { bg: 'bg-amber-100',  text: 'text-amber-800',  label: 'Awaiting peer'    },
   pending_admin:    { bg: 'bg-blue-100',   text: 'text-blue-800',   label: 'Awaiting admin'   },
   approved:         { bg: 'bg-emerald-100',text: 'text-emerald-800',label: 'Approved'         },

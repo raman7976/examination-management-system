@@ -34,6 +34,10 @@ const LIKE = (prefix) => `${prefix}%`;
 export async function sweep(prefix = TEST_PREFIX) {
     const like = LIKE(prefix);
 
+    // 0. Unfair-means cases deliberately survive period deletion (FKs are
+    //    ON DELETE SET NULL), so they are swept explicitly by their copied label.
+    await db.query(`DELETE FROM unfair_means_cases WHERE semester_label LIKE ?`, [like]);
+
     // 1. Periods — single delete cascades through the whole period-scoped tree.
     await db.query(`DELETE FROM exam_periods WHERE semester_label LIKE ?`, [like]);
 
@@ -82,6 +86,7 @@ export async function countLeftovers(prefix = '__TEST_') {
         classrooms:          [`SELECT COUNT(*) c FROM classrooms WHERE room_name LIKE ?`, [like]],
         users:               [`SELECT COUNT(*) c FROM users WHERE email LIKE ?`, [like]],
         exam_sessions:       [`SELECT COUNT(*) c FROM exam_sessions WHERE academic_year LIKE ?`, [like]],
+        unfair_means_cases:  [`SELECT COUNT(*) c FROM unfair_means_cases WHERE semester_label LIKE ?`, [like]],
     };
     const leftovers = {};
     for (const [table, [sql, params]] of Object.entries(checks)) {

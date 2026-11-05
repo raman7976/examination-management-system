@@ -13,6 +13,7 @@ import {
     generateSchedule,
     previewSchedule,
     getSchedule,
+    getScheduleProgress,
     addAssignment,
     reassignAssignment,
     removeAssignment,
@@ -32,6 +33,12 @@ import {
     listSwapRequestsAdmin,
     adminRespondToSwap,
 } from '../controllers/invigilatorSwapController.js';
+import {
+    saveInvigilationSession,
+    getAllInvigilationSessions,
+    getInvigilationSessionById,
+    deleteInvigilationSession,
+} from '../controllers/invigilationSessionController.js';
 
 const router = express.Router();
 
@@ -67,6 +74,7 @@ router.post  ('/generate',         adminOnly, generateSchedule);   // legacy: ge
 router.post  ('/generate-preview', adminOnly, previewSchedule);    // run algorithm in-memory, no DB write
 router.post  ('/apply-changes',    adminOnly, applyChanges);
 router.get   ('/schedule',         adminOnly, getSchedule);
+router.get   ('/progress',         adminOnly, getScheduleProgress); // workflow tracker counts
 router.delete('/schedule',         adminOnly, clearSchedule);
 
 // Helpers / per-row edits
@@ -74,6 +82,12 @@ router.get   ('/eligible',                 adminOnly, getEligibleForSlot);
 router.post  ('/assignments',              adminOnly, addAssignment);
 router.put   ('/assignments/:id/reassign', adminOnly, reassignAssignment);
 router.delete('/assignments/:id',          adminOnly, removeAssignment);
+
+// Invigilation session archive (save/delete = admin, list/view = both)
+router.post  ('/sessions/save',   adminOnly, saveInvigilationSession);
+router.get   ('/sessions',        [protect], getAllInvigilationSessions);
+router.get   ('/sessions/:id',    [protect], getInvigilationSessionById);
+router.delete('/sessions/:id',    adminOnly, deleteInvigilationSession);
 
 // Swap moderation (admin)
 router.get('/swap-requests',                   adminOnly, listSwapRequestsAdmin);

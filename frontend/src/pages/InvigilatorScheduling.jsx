@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ToastContainer, toast } from 'react-toastify';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { useNavigate } from 'react-router-dom';
+import { FileText, FileDown, Loader2, CircleCheck } from 'lucide-react';
 import {
     getRoleTargets,
     updateRoleTargets,
@@ -11,9 +13,22 @@ import {
     getEligibleInvigilators,
     applyInvigilatorChanges,
     clearInvigilatorSchedule,
+    getInvigilationProgress,
 } from '../api/api.js';
 import { usePeriod } from '../context/usePeriod.js';
 import PeriodScopedEmptyState from '../components/PeriodScopedEmptyState.jsx';
+import PdfExportMenu from '../components/PdfExportMenu.jsx';
+import InvigilationProgress from '../components/InvigilationProgress.jsx';
+import Modal from '../components/ui/Modal.jsx';
+import { deriveInvigilationSteps, readDraftCount } from '../utils/invigilationProgress.js';
+import {
+    gridFromSchedule,
+    dutiesByInvigilator,
+    downloadDutyChart,
+    downloadInvigilatorRoster,
+    downloadDutyLetters,
+    downloadWorkloadSummary,
+} from '../utils/invigilationPdf.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Helpers
@@ -42,6 +57,9 @@ function formatDate(dateStr) {
     } catch { return dateStr; }
 }
 
+const periodMeta = (period) => ({ semesterLabel: period?.semester_label, examType: period?.exam_type });
+const pdfError = (err) => toast.error(err?.response?.data?.message || err?.message || 'Could not generate the PDF.');
+
 function BalanceBadge({ balance, isConfigured = true }) {
     if (!isConfigured) return <span className="inline-flex items-center gap-1 bg-surface2 text-textMuted text-[10px] font-bold rounded-full px-2 py-0.5">Not set</span>;
     if (balance === 0) return <span className="inline-flex items-center gap-1 bg-success/10 text-success text-[10px] font-bold rounded-full px-2 py-0.5">On target</span>;
@@ -56,15 +74,101 @@ function BalanceBadge({ balance, isConfigured = true }) {
 function InvigilatorScheduling() {
     const [activeTab, setActiveTab] = useState('targets');
     const { activePeriod, periodVersion, periodsLoaded, periodsError } = usePeriod();
+    const navigate = useNavigate();
+
+    // ── Workflow progress (tracker above the tabs) ──────────────────────────
+    const [progress, setProgress] = useState(null);
+    const [progressError, setProgressError] = useState(null);
+    const [completeModal, setCompleteModal] = useState(false);
+
+    // Unsaved draft edits: live from the Schedule tab while it is open,
+    // otherwise from the draft it persisted to sessionStorage.
+    const [liveDraft, setLiveDraft] = useState({ periodId: null, count: 0 });
+    const reportDraftCount = useCallback(
+        (count) => setLiveDraft({ periodId: activePeriod?.id, count }),
+        [activePeriod?.id]
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read when leaving the Schedule tab
+    const storedDraftCount = useMemo(() => readDraftCount(activePeriod?.id), [activePeriod?.id, activeTab, periodVersion]);
+    const draftCount = activeTab === 'schedule' && liveDraft.periodId === activePeriod?.id
+        ? liveDraft.count
+        : storedDraftCount;
+
+    const refreshProgress = useCallback(async () => {
+        try {
+            const res = await getInvigilationProgress();
+            setProgress(res.data);
+            setProgressError(null);
+            return res.data;
+        } catch (err) {
+            setProgressError(err.response?.data?.message || err.message || 'Request failed.');
+            return null;
+        }
+    }, []);
+
+    // Reload on period switch and whenever the admin changes tab (cheap, and it
+    // picks up swap requests or seating changes made elsewhere meanwhile).
+    useEffect(() => {
+        if (activePeriod) refreshProgress();
+    }, [activePeriod, periodVersion, activeTab, refreshProgress]);
+
+    const derived = useMemo(() => deriveInvigilationSteps(progress, { draftCount }), [progress, draftCount]);
+
+    const handleAction = (action) => {
+        if (action.tab) setActiveTab(action.tab);
+        else if (action.route) navigate(action.route);
+    };
+
+    // Called by the Schedule tab after Save Changes. Confirms completion with a
+    // dialog the first time the schedule becomes complete, and after saving a
+    // freshly generated draft (a full re-plan).
+    const handleScheduleSaved = async ({ fromGenerate }) => {
+        const wasComplete = !!derived?.complete;
+        const fresh = await refreshProgress();
+        const next = deriveInvigilationSteps(fresh, { draftCount: 0 });
+        const confirmed = !!next?.complete && (fromGenerate || !wasComplete);
+        if (confirmed) setCompleteModal(true);
+        return { next, confirmed };
+    };
+
+    // PDFs offered once complete — always built from the saved schedule.
+    const fromSaved = (fn) => async () => {
+        const res = await getInvigilatorSchedule();
+        await fn(gridFromSchedule(res.data.schedule || []), periodMeta(activePeriod));
+    };
+    const completionPdfItems = [
+        { key: 'chart', label: 'Duty chart', description: 'Every session, room and invigilator, with signature column.', onSelect: fromSaved(downloadDutyChart) },
+        { key: 'roster', label: 'Invigilator-wise roster', description: 'Alphabetical list with each person\'s duties.', onSelect: fromSaved(downloadInvigilatorRoster) },
+        { key: 'letters', label: 'Duty letters (all)', description: 'A formal duty letter for every invigilator.', onSelect: fromSaved(downloadDutyLetters) },
+    ];
 
     return (
         <div className="max-w-full">
-            <ToastContainer position="top-right" theme="colored" />
-
             <div className="mb-4">
                 <h2 className="text-2xl font-bold text-brand-500 tracking-tight">Invigilator Scheduling</h2>
                 <p className="text-sm text-textMuted mt-1">Configure duty targets, manage per-invigilator overrides, and assign invigilators to rooms.</p>
             </div>
+
+            {periodsLoaded && !periodsError && activePeriod && (
+                <InvigilationProgress
+                    derived={derived}
+                    progress={progress}
+                    error={progressError}
+                    onAction={handleAction}
+                    onRetry={refreshProgress}
+                    pdfItems={completionPdfItems}
+                    onPdfError={pdfError}
+                />
+            )}
+
+            <ScheduleCompleteModal
+                open={completeModal}
+                onClose={() => setCompleteModal(false)}
+                progress={progress}
+                activePeriod={activePeriod}
+                pdfItems={completionPdfItems}
+                onAction={(action) => { setCompleteModal(false); handleAction(action); }}
+            />
 
             {/* Tab Switcher */}
             <div className="flex gap-1 mb-5 bg-surface2 rounded-lg p-1 w-fit">
@@ -90,12 +194,110 @@ function InvigilatorScheduling() {
                 </div>
             ) : (
                 <>
-                    {activeTab === 'targets'      && <RoleTargetsPanel periodVersion={periodVersion} activePeriod={activePeriod} />}
+                    {activeTab === 'targets'      && <RoleTargetsPanel periodVersion={periodVersion} activePeriod={activePeriod} onSaved={refreshProgress} />}
                     {activeTab === 'invigilators' && <InvigilatorsPanel periodVersion={periodVersion} activePeriod={activePeriod} />}
-                    {activeTab === 'schedule'     && <SchedulePanel     periodVersion={periodVersion} activePeriod={activePeriod} />}
+                    {activeTab === 'schedule'     && (
+                        <SchedulePanel
+                            periodVersion={periodVersion}
+                            activePeriod={activePeriod}
+                            onDraftCountChange={reportDraftCount}
+                            onSaved={handleScheduleSaved}
+                            onChanged={refreshProgress}
+                        />
+                    )}
                 </>
             )}
         </div>
+    );
+}
+
+// Inline download buttons (a dropdown would be clipped inside the modal).
+function PdfButtons({ items }) {
+    const [busy, setBusy] = useState(null);
+    const run = async (item) => {
+        setBusy(item.key);
+        try { await item.onSelect(); } catch (err) { pdfError(err); } finally { setBusy(null); }
+    };
+    return (
+        <div className="mt-1.5 flex flex-wrap gap-2">
+            {items.map(item => (
+                <button key={item.key} type="button" disabled={busy !== null} onClick={() => run(item)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg border border-brand-500/40 text-brand-500 hover:bg-brand-500/10 disabled:opacity-50 cursor-pointer">
+                    {busy === item.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+                    {item.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+// Confirmation shown when saving makes the schedule complete.
+function ScheduleCompleteModal({ open, onClose, progress, activePeriod, pdfItems, onAction }) {
+    const pendingSwaps = progress?.swaps?.pending_admin || 0;
+    return (
+        <Modal open={open} onClose={onClose} size="lg">
+            {progress && (
+                <div className="text-center pt-2">
+                    <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-success/10 text-success flex items-center justify-center">
+                        <CircleCheck className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-bold text-text">Invigilation schedule complete</h3>
+                    <p className="text-sm text-textMuted mt-1">
+                        {activePeriod?.semester_label} · <span className="capitalize">{activePeriod?.exam_type}</span>
+                    </p>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                        {[
+                            ['Duties', progress.schedule.duties],
+                            ['Rooms staffed', progress.seating.rooms],
+                            ['Invigilators', progress.schedule.invigilators],
+                        ].map(([label, value]) => (
+                            <div key={label} className="rounded-lg bg-surface2 py-2.5">
+                                <div className="text-xl font-bold text-text">{value}</div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-textFaint">{label}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="mt-5 text-left">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-textMuted mb-2">What happens next</div>
+                        <ol className="space-y-2.5 text-sm text-text">
+                            <li className="flex gap-2.5">
+                                <span className="shrink-0 w-5 h-5 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center">1</span>
+                                <div className="flex-1">
+                                    <div>Share the duty chart and duty letters.</div>
+                                    <PdfButtons items={pdfItems} />
+                                </div>
+                            </li>
+                            <li className="flex gap-2.5">
+                                <span className="shrink-0 w-5 h-5 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center">2</span>
+                                <div className="flex-1">
+                                    Invigilators can already see their duties in their portal. Any swap or cover requests they
+                                    make will wait for you in{' '}
+                                    <button type="button" onClick={() => onAction({ route: '/dashboard/swap-approval' })}
+                                        className="font-semibold text-brand-500 hover:underline cursor-pointer">Swap Approval</button>
+                                    {pendingSwaps > 0 && <span className="text-warning font-semibold"> ({pendingSwaps} waiting now)</span>}.
+                                </div>
+                            </li>
+                            <li className="flex gap-2.5">
+                                <span className="shrink-0 w-5 h-5 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center">3</span>
+                                <div className="flex-1">
+                                    After the exams, save this schedule as a permanent record in{' '}
+                                    <button type="button" onClick={() => onAction({ route: '/dashboard/past-invigilation' })}
+                                        className="font-semibold text-brand-500 hover:underline cursor-pointer">Past Invigilation</button>.
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
+
+                    <div className="mt-6 flex justify-end">
+                        <button type="button" onClick={onClose}
+                            className="px-6 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-brand-500 text-white hover:bg-brand-600 cursor-pointer">
+                            Done
+                        </button>
+                    </div>
+                </div>
+            )}
+        </Modal>
     );
 }
 
@@ -103,7 +305,7 @@ function InvigilatorScheduling() {
 //  Panel 1 — Role Targets
 // ═════════════════════════════════════════════════════════════════════════════
 
-function RoleTargetsPanel({ periodVersion, activePeriod }) {
+function RoleTargetsPanel({ periodVersion, activePeriod, onSaved }) {
     const [targets, setTargets] = useState({ faculty: '', phd_student: '', lab_staff: '' });
     const [updatedAt, setUpdatedAt] = useState({});
     const [loaded, setLoaded] = useState(false);
@@ -141,8 +343,9 @@ function RoleTargetsPanel({ periodVersion, activePeriod }) {
         setSaving(true);
         try {
             await updateRoleTargets(ROLES.map(r => ({ role: r.key, target_duties: Number(targets[r.key]) || 0 })));
-            toast.success('Role targets saved.', { autoClose: 2000 });
+            toast.success('Role targets saved. Next: generate the schedule on the Schedule tab.', { autoClose: 3500 });
             load();
+            onSaved?.();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Save failed.');
         } finally {
@@ -201,7 +404,7 @@ function RoleTargetsPanel({ periodVersion, activePeriod }) {
                             className="w-28 px-3 py-2 text-sm rounded-lg border border-border bg-surface2 text-text
                                 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/40"
                         />
-                        <span className="text-xs text-textFaint">duties / semester</span>
+                        <span className="text-xs text-textFaint">duties this exam</span>
                         {updatedAt[r.key] && (
                             <span className="text-[10px] text-textFaint ml-auto">
                                 updated {new Date(updatedAt[r.key]).toLocaleString()}
@@ -247,23 +450,65 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
         }
     }, []);
 
-    useEffect(() => { load(''); }, [load, periodVersion]);
-
+    // One effect for both the period switch and the (debounced) search, so the
+    // list loads once on mount and a period switch keeps the current search.
     useEffect(() => {
-        const t = setTimeout(() => load(search), 350);
+        const t = setTimeout(() => load(search), search ? 350 : 0);
         return () => clearTimeout(t);
-    }, [search, load]);
+    }, [search, load, periodVersion]);
 
-    const saveOverride = async (userId, raw) => {
+    const cancelEdit = (userId) =>
+        setEditing(prev => { const next = { ...prev }; delete next[userId]; return next; });
+
+    const saveOverride = async (inv, raw) => {
         const val = raw === '' || raw === null ? null : Number(raw);
         try {
-            await updateInvigilatorOverride(userId, { override_target: val });
-            toast.success('Override saved.', { autoClose: 1500 });
-            setEditing(prev => { const next = { ...prev }; delete next[userId]; return next; });
+            // Send the existing note back, otherwise the upsert would clear it.
+            await updateInvigilatorOverride(inv.user_id, { override_target: val, note: inv.note ?? null });
+            toast.success(val === null ? 'Override removed.' : 'Override saved.', { autoClose: 1500 });
+            cancelEdit(inv.user_id);
             load(search);
         } catch (err) {
             toast.error(err.response?.data?.message || 'Save failed.');
         }
+    };
+
+    // Enter and click-away both commit through onBlur; Escape blurs with this
+    // flag set so the edit is discarded instead of saved.
+    const skipBlurSaveRef = useRef(false);
+    const commitOverride = (inv, raw) => {
+        if (skipBlurSaveRef.current) {
+            skipBlurSaveRef.current = false;
+            cancelEdit(inv.user_id);
+            return;
+        }
+        if (String(raw ?? '') === String(inv.override_target ?? '')) {
+            cancelEdit(inv.user_id);
+            return;
+        }
+        saveOverride(inv, raw);
+    };
+
+    const downloadWorkload = async () => {
+        // Always the full list — the on-screen search must not trim the record.
+        const res = await getInvigilatorScheduleList('');
+        await downloadWorkloadSummary(res.data.invigilators || [], periodMeta(res.data.active_period || activePeriod), {
+            siblingExamType: res.data.sibling_period?.exam_type || null,
+        });
+    };
+
+    const downloadLetterFor = async (inv) => {
+        const res = await getInvigilatorSchedule();
+        const grid = gridFromSchedule(res.data.schedule || []);
+        const mine = dutiesByInvigilator(grid).find(p => p.person.user_id === inv.user_id);
+        if (!mine) {
+            toast.info(`${inv.full_name} has no saved duties in this exam period.`);
+            return;
+        }
+        await downloadDutyLetters(grid, periodMeta(activePeriod), {
+            onlyKeys: [inv.user_id],
+            fileLabel: inv.full_name,
+        });
     };
 
     const resetOverride = async (userId) => {
@@ -307,6 +552,20 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
                 <span className="text-warning">{stats.deficit} in deficit</span>
                 <span className="text-textFaint">·</span>
                 <span className="text-danger">{stats.extra} with extra duties</span>
+                <div className="ml-auto">
+                    <PdfExportMenu
+                        label="Workload PDF"
+                        disabled={stats.total === 0}
+                        disabledReason="No invigilators registered."
+                        onError={pdfError}
+                        items={[{
+                            key: 'workload',
+                            label: 'Workload summary',
+                            description: 'Targets vs assigned duties for every invigilator, with the semester roll-up.',
+                            onSelect: downloadWorkload,
+                        }]}
+                    />
+                </div>
             </div>
 
             {/* Search */}
@@ -366,10 +625,10 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
                                                     autoFocus
                                                     value={editing[inv.user_id]}
                                                     onChange={(e) => setEditing(prev => ({ ...prev, [inv.user_id]: e.target.value }))}
-                                                    onBlur={(e) => saveOverride(inv.user_id, e.target.value)}
+                                                    onBlur={(e) => commitOverride(inv, e.target.value)}
                                                     onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') saveOverride(inv.user_id, e.target.value);
-                                                        if (e.key === 'Escape') setEditing(prev => { const n = { ...prev }; delete n[inv.user_id]; return n; });
+                                                        if (e.key === 'Enter') e.currentTarget.blur();
+                                                        if (e.key === 'Escape') { skipBlurSaveRef.current = true; e.currentTarget.blur(); }
                                                     }}
                                                     className="w-20 px-2 py-1 text-xs rounded border border-brand-500/40 focus:outline-none focus:ring-1 focus:ring-brand-500/30 text-right"
                                                 />
@@ -391,12 +650,23 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
                                         </td>
                                         <td className="px-3 py-2.5 text-center"><BalanceBadge balance={inv.balance} isConfigured={inv.is_configured ?? (inv.cumulative_target > 0)} /></td>
                                         <td className="px-3 py-2.5 text-right pr-4">
-                                            {inv.override_target != null && (
-                                                <button onClick={() => resetOverride(inv.user_id)}
-                                                    className="text-[10px] font-bold uppercase tracking-wider text-textMuted hover:text-brand-500 border border-border hover:border-brand-500 px-2 py-1 rounded cursor-pointer">
-                                                    Reset
-                                                </button>
-                                            )}
+                                            <div className="inline-flex items-center gap-1.5">
+                                                {inv.override_target != null && (
+                                                    <button onClick={() => resetOverride(inv.user_id)}
+                                                        className="text-[10px] font-bold uppercase tracking-wider text-textMuted hover:text-brand-500 border border-border hover:border-brand-500 px-2 py-1 rounded cursor-pointer">
+                                                        Reset
+                                                    </button>
+                                                )}
+                                                {inv.assigned_count > 0 && (
+                                                    <button
+                                                        onClick={() => downloadLetterFor(inv).catch(pdfError)}
+                                                        title={`Download duty letter for ${inv.full_name} (PDF)`}
+                                                        aria-label={`Download duty letter for ${inv.full_name}`}
+                                                        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-brand-500 border border-brand-500/30 hover:bg-brand-500 hover:text-white px-2 py-1 rounded cursor-pointer">
+                                                        <FileText className="w-3 h-3" /> Letter
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -413,7 +683,15 @@ function InvigilatorsPanel({ periodVersion, activePeriod }) {
 //  Panel 3 — Schedule (Generate / View / Edit)
 // ═════════════════════════════════════════════════════════════════════════════
 
-function SchedulePanel({ periodVersion, activePeriod }) {
+const emptyDraft = () => ({ reassigns: {}, removes: new Set(), adds: [], generated: false });
+const draftFromJson = (parsed) => ({
+    reassigns: parsed.reassigns || {},
+    removes:   new Set(parsed.removes || []),
+    adds:      Array.isArray(parsed.adds) ? parsed.adds : [],
+    generated: !!parsed.generated,   // the draft came from Generate Draft (a full re-plan)
+});
+
+function SchedulePanel({ periodVersion, activePeriod, onDraftCountChange, onSaved, onChanged }) {
     const { registerDirtyCheck } = usePeriod();
     const [schedule, setSchedule] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -435,18 +713,12 @@ function SchedulePanel({ periodVersion, activePeriod }) {
     const draftKey = activePeriod ? `inv_sched_draft_p${activePeriod.id}` : null;
 
     const initialPending = (() => {
-        if (!draftKey) return { reassigns: {}, removes: new Set(), adds: [] };
+        if (!draftKey) return emptyDraft();
         try {
             const raw = sessionStorage.getItem(draftKey);
-            if (!raw) return { reassigns: {}, removes: new Set(), adds: [] };
-            const parsed = JSON.parse(raw);
-            return {
-                reassigns: parsed.reassigns || {},
-                removes:   new Set(parsed.removes || []),
-                adds:      Array.isArray(parsed.adds) ? parsed.adds : [],
-            };
+            return raw ? draftFromJson(JSON.parse(raw)) : emptyDraft();
         } catch {
-            return { reassigns: {}, removes: new Set(), adds: [] };
+            return emptyDraft();
         }
     })();
 
@@ -457,7 +729,7 @@ function SchedulePanel({ periodVersion, activePeriod }) {
     const pendingCount =
         Object.keys(pending.reassigns).length + pending.removes.size + pending.adds.length;
 
-    const resetPending = () => setPending({ reassigns: {}, removes: new Set(), adds: [] });
+    const resetPending = () => setPending(emptyDraft());
 
     // Persist drafts to sessionStorage on every change (Set→Array for JSON).
     useEffect(() => {
@@ -470,10 +742,14 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                     reassigns: pending.reassigns,
                     removes:   Array.from(pending.removes),
                     adds:      pending.adds,
+                    generated: pending.generated,
                 }));
             }
         } catch { /* sessionStorage may be full or disabled — non-fatal */ }
     }, [draftKey, pending, pendingCount]);
+
+    // Keep the page-level progress tracker in step with the draft.
+    useEffect(() => { onDraftCountChange?.(pendingCount); }, [pendingCount, onDraftCountChange]);
 
     // When activePeriod changes WHILE this component stays mounted (i.e. the
     // user switched periods from Registration but we're still here), rehydrate
@@ -483,23 +759,14 @@ function SchedulePanel({ periodVersion, activePeriod }) {
         if (prevDraftKey.current === draftKey) return;
         prevDraftKey.current = draftKey;
         if (!draftKey) {
-            setPending({ reassigns: {}, removes: new Set(), adds: [] });
+            setPending(emptyDraft());
             return;
         }
         try {
             const raw = sessionStorage.getItem(draftKey);
-            if (!raw) {
-                setPending({ reassigns: {}, removes: new Set(), adds: [] });
-                return;
-            }
-            const parsed = JSON.parse(raw);
-            setPending({
-                reassigns: parsed.reassigns || {},
-                removes:   new Set(parsed.removes || []),
-                adds:      Array.isArray(parsed.adds) ? parsed.adds : [],
-            });
+            setPending(raw ? draftFromJson(JSON.parse(raw)) : emptyDraft());
         } catch {
-            setPending({ reassigns: {}, removes: new Set(), adds: [] });
+            setPending(emptyDraft());
         }
     }, [draftKey]);
 
@@ -581,6 +848,7 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                 reassigns: {},
                 removes: existingIds,
                 adds:    newAdds,
+                generated: true,
             });
             setWarnings(res.data.warnings || []);
             toast.success(res.data.message || 'Draft generated. Review and click Save Changes when ready.', { autoClose: 3500 });
@@ -636,10 +904,19 @@ function SchedulePanel({ periodVersion, activePeriod }) {
         }
     };
 
-    const undoRemove = (assignmentId) => {
+    const undoRemove = (inv, slot) => {
+        // After Generate Draft the old chips are all staged for removal and the
+        // same people may already be re-staged elsewhere in this slot — reviving
+        // the old chip would double-book them and make Save fail.
+        const clash = slot.rooms.find(r => r.invigilators.some(i =>
+            i.user_id === inv.user_id && i._status !== 'removed' && i.assignment_id !== inv.assignment_id));
+        if (clash) {
+            toast.error(`${inv.full_name} is already placed in ${clash.room_name} in this slot.`);
+            return;
+        }
         setPending(prev => {
             const removes = new Set(prev.removes);
-            removes.delete(assignmentId);
+            removes.delete(inv.assignment_id);
             return { ...prev, removes };
         });
     };
@@ -660,9 +937,22 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                 })),
             };
             const res = await applyInvigilatorChanges(payload);
-            toast.success(res.data.message || 'Saved.', { autoClose: 2500 });
+            const fromGenerate = pending.generated;
             resetPending();
             await load();
+            // The page re-checks the workflow; if the schedule just became
+            // complete it shows a confirmation dialog instead of a toast.
+            const outcome = await onSaved?.({ fromGenerate });
+            if (!outcome?.confirmed) {
+                const next = outcome?.next;
+                if (next?.complete) {
+                    toast.success('Schedule saved. Every room is fully staffed: the schedule is complete.', { autoClose: 4000 });
+                } else if (next?.current) {
+                    toast.success(`Schedule saved. Still to do: ${next.current.detail}`, { autoClose: 5000 });
+                } else {
+                    toast.success(res.data.message || 'Saved.', { autoClose: 2500 });
+                }
+            }
         } catch (err) {
             toast.error(err.response?.data?.message || 'Save failed — nothing was applied.');
         } finally {
@@ -695,6 +985,7 @@ function SchedulePanel({ periodVersion, activePeriod }) {
             resetPending();
             setWarnings([]);
             await load();
+            onChanged?.();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Clear failed.');
         } finally {
@@ -756,6 +1047,67 @@ function SchedulePanel({ periodVersion, activePeriod }) {
         }));
     }, [schedule, pending]);
 
+    // Duties per person in the draft (saved + staged, minus staged removals) —
+    // what the edit modal shows, so counts stay right while editing.
+    const draftCounts = useMemo(() => {
+        const m = new Map();
+        for (const s of effectiveSchedule)
+            for (const r of s.rooms)
+                for (const i of r.invigilators)
+                    if (i._status !== 'removed') m.set(i.user_id, (m.get(i.user_id) || 0) + 1);
+        return m;
+    }, [effectiveSchedule]);
+
+    // For the modal's slot: who is already placed there (and where), and how
+    // many duties each person has on the same day — both from the draft.
+    const modalContext = useMemo(() => {
+        if (!swapModal) return null;
+        const excludeId = swapModal.assignment?.assignment_id;
+        const slot = effectiveSchedule.find(s => s.slot_id === swapModal.slotId);
+        const placedInSlot = new Map();
+        const sameDay = new Map();
+        if (slot) {
+            for (const s of effectiveSchedule) {
+                if (s.exam_date !== slot.exam_date) continue;
+                for (const r of s.rooms) {
+                    for (const i of r.invigilators) {
+                        if (i._status === 'removed' || i.assignment_id === excludeId) continue;
+                        sameDay.set(i.user_id, (sameDay.get(i.user_id) || 0) + 1);
+                        if (s.slot_id === slot.slot_id) placedInSlot.set(i.user_id, r.room_name);
+                    }
+                }
+            }
+        }
+        return { placedInSlot, sameDay };
+    }, [swapModal, effectiveSchedule]);
+
+    // ── PDF export (always from the SAVED schedule) ─────────────────────────
+    const savedGrid = useMemo(() => gridFromSchedule(schedule), [schedule]);
+    const hasSavedDuties = useMemo(
+        () => schedule.some(s => s.rooms.some(r => r.invigilators.length > 0)),
+        [schedule]
+    );
+    const exportItems = [
+        {
+            key: 'chart',
+            label: 'Duty chart',
+            description: 'Session-wise chart of every room and invigilator, with signature column. One page per exam day.',
+            onSelect: () => downloadDutyChart(savedGrid, periodMeta(activePeriod)),
+        },
+        {
+            key: 'roster',
+            label: 'Invigilator-wise roster',
+            description: 'Alphabetical list of invigilators with each of their duties.',
+            onSelect: () => downloadInvigilatorRoster(savedGrid, periodMeta(activePeriod)),
+        },
+        {
+            key: 'letters',
+            label: 'Duty letters (all)',
+            description: 'A formal duty letter for every invigilator, one per page.',
+            onSelect: () => downloadDutyLetters(savedGrid, periodMeta(activePeriod)),
+        },
+    ];
+
     const totalsBySlot = useMemo(() => effectiveSchedule.map(s => ({
         slot_id:        s.slot_id,
         total_required: s.rooms.reduce((a, r) => a + r.required, 0),
@@ -802,11 +1154,19 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                     {' · '}
                     {schedule.length === 0 ? 'no schedule yet, click Generate' : `${schedule.length} slot(s) loaded`}
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={load} disabled={loading}
+                <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => { load(); onChanged?.(); }} disabled={loading}
                         className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border border-border text-textMuted hover:bg-surface2 cursor-pointer">
                         Refresh
                     </button>
+                    <PdfExportMenu
+                        items={exportItems}
+                        disabled={!hasSavedDuties || pendingCount > 0}
+                        disabledReason={pendingCount > 0
+                            ? 'Save or discard your unsaved changes first: PDFs are generated from the saved schedule.'
+                            : 'There is no saved schedule to export yet.'}
+                        onError={pdfError}
+                    />
                     <button onClick={handleClear} disabled={clearing || schedule.length === 0}
                         className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg border transition-all duration-200 ${
                             clearing || schedule.length === 0
@@ -956,11 +1316,23 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                                                     const liveCount = room.invigilators.filter(i => i._status !== 'removed').length;
                                                     const ok = liveCount >= room.required;
                                                     return (
-                                                        <tr key={room.classroom_id} className="hover:bg-surface2/40">
-                                                            <td className="px-5 py-2.5 font-mono text-xs font-bold text-text">{room.room_name}</td>
-                                                            <td className="px-3 py-2.5 text-[11px] text-textMuted truncate max-w-[180px]">{room.course_codes}</td>
-                                                            <td className="px-3 py-2.5 text-right text-xs text-textMuted">{room.students}</td>
-                                                            <td className={`px-3 py-2.5 text-right text-xs font-bold ${ok ? 'text-success' : 'text-warning'}`}>{room.required}</td>
+                                                        <tr key={room.classroom_id} className={room.orphaned ? 'bg-danger/5' : 'hover:bg-surface2/40'}>
+                                                            <td className="px-5 py-2.5 font-mono text-xs font-bold text-text">
+                                                                {room.room_name}
+                                                                {room.orphaned && (
+                                                                    <span className="ml-2 font-sans text-[9px] font-bold uppercase tracking-wider text-danger bg-danger/10 px-1.5 py-0.5 rounded"
+                                                                        title="This room no longer has any seated exam in this slot (seating was changed after the schedule was saved).">
+                                                                        No seating
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-[11px] text-textMuted truncate max-w-[180px]">
+                                                                {room.orphaned
+                                                                    ? <span className="italic text-danger">No exam here — remove these duties</span>
+                                                                    : room.course_codes}
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-right text-xs text-textMuted">{room.orphaned ? '—' : room.students}</td>
+                                                            <td className={`px-3 py-2.5 text-right text-xs font-bold ${room.orphaned ? 'text-textFaint' : ok ? 'text-success' : 'text-warning'}`}>{room.orphaned ? '—' : room.required}</td>
                                                             <td className="px-3 py-2.5">
                                                                 <div className="flex flex-wrap gap-1.5">
                                                                     {room.invigilators.length === 0 && <span className="text-[10px] text-textFaint italic">unassigned</span>}
@@ -972,7 +1344,7 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                                                                         const isInstructor = !!inv.is_course_instructor;
 
                                                                         const onClickChip = isRemoved
-                                                                            ? () => undoRemove(inv.assignment_id)
+                                                                            ? () => undoRemove(inv, slot)
                                                                             : () => setSwapModal({ slotId: slot.slot_id, room, assignment: inv });
 
                                                                         // Styling precedence:
@@ -1053,6 +1425,9 @@ function SchedulePanel({ periodVersion, activePeriod }) {
                     slotId={swapModal.slotId}
                     room={swapModal.room}
                     assignment={swapModal.assignment || null}
+                    placedInSlot={modalContext.placedInSlot}
+                    sameDay={modalContext.sameDay}
+                    draftCounts={draftCounts}
                     onPick={(userId, userData) => {
                         stagePick(swapModal.slotId, swapModal.room, swapModal.assignment || null, userId, userData);
                         setSwapModal(null);
@@ -1082,9 +1457,13 @@ const ROLE_FILTERS = [
     { key: 'lab_staff',    label: 'Lab Staff' },
 ];
 
-function AssignmentModal({ slotId, room, assignment, onPick, onRemove, onClose }) {
+// Availability is decided against the DRAFT, not the saved schedule: the server
+// returns everyone (include_busy) and the parent passes who is already placed
+// in this slot once staged adds / removals are applied (placedInSlot), plus
+// draft duty counts and same-day load for each person.
+function AssignmentModal({ slotId, room, assignment, placedInSlot, sameDay, draftCounts, onPick, onRemove, onClose }) {
     const isSwap = !!assignment;
-    const [eligible, setEligible] = useState([]);
+    const [everyone, setEveryone] = useState([]);
     const [loading, setLoading]   = useState(true);
     const [search, setSearch]     = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
@@ -1092,19 +1471,22 @@ function AssignmentModal({ slotId, room, assignment, onPick, onRemove, onClose }
     useEffect(() => {
         (async () => {
             try {
-                // For pending-add assignments (tempId < 0), exclude_assignment_id has no
-                // server-side meaning, so just request the full eligible list.
-                const excludeId = assignment && assignment.assignment_id > 0
-                    ? assignment.assignment_id : undefined;
-                const res = await getEligibleInvigilators(slotId, excludeId);
-                setEligible(res.data.eligible || []);
+                const res = await getEligibleInvigilators(slotId, undefined, { includeBusy: true });
+                setEveryone(res.data.eligible || []);
             } catch (err) {
                 toast.error(err.response?.data?.message || 'Failed to load eligible invigilators.');
             } finally {
                 setLoading(false);
             }
         })();
-    }, [slotId, assignment]);
+    }, [slotId]);
+
+    const eligible = useMemo(() => everyone
+        .filter(e => !placedInSlot.has(e.user_id))
+        .map(e => {
+            const assigned = draftCounts.get(e.user_id) || 0;
+            return { ...e, assigned_count: assigned, balance: assigned - e.effective_target, same_day: sameDay.get(e.user_id) || 0 };
+        }), [everyone, placedInSlot, draftCounts, sameDay]);
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -1187,7 +1569,14 @@ function AssignmentModal({ slotId, room, assignment, onPick, onRemove, onClose }
                                                     {inv.full_name}
                                                     {isCurrent && <span className="text-[9px] font-bold text-brand-500 bg-brand-500/10 px-1.5 py-0.5 rounded">CURRENT</span>}
                                                 </div>
-                                                <div className="text-[10px] text-textFaint">{inv.employee_id || '—'} · {inv.department || '—'}</div>
+                                                <div className="text-[10px] text-textFaint">
+                                                    {inv.employee_id || '—'} · {inv.department || '—'}
+                                                    {inv.same_day > 0 && (
+                                                        <span className="ml-1.5 text-warning font-semibold">
+                                                            · {inv.same_day} other dut{inv.same_day === 1 ? 'y' : 'ies'} that day
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2 text-xs text-textMuted">{ROLE_LABEL[inv.role] || inv.role}</td>
                                             <td className="px-3 py-2 text-right text-xs">{inv.assigned_count} / {inv.effective_target}</td>

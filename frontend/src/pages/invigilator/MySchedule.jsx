@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useOutletContext } from 'react-router-dom';
 import { getFullInvigilationSchedule } from '../../api/api.js';
 import SwapRequestModal from './SwapRequestModal.jsx';
+import PdfExportMenu from '../../components/PdfExportMenu.jsx';
+import { gridFromSchedule, downloadDutyLetters, downloadDutyChart } from '../../utils/invigilationPdf.js';
 
 const fmtTime = (t) => (t ? String(t).slice(0, 5) : '');
 const fmtDayTab = (d) =>
@@ -89,6 +91,31 @@ export default function MySchedule() {
 
   const canSwap = myDuties.length > 0;
 
+  // ── PDF downloads ──
+  const myUserId = useMemo(() => {
+    for (const slot of schedule)
+      for (const room of slot.rooms || [])
+        for (const inv of room.invigilators || [])
+          if (inv.is_me) return inv.user_id;
+    return null;
+  }, [schedule]);
+  const pdfMeta = { semesterLabel: examPeriod?.semester_label, examType: examPeriod?.exam_type };
+  const pdfItems = [
+    {
+      key: 'letter',
+      label: 'My duty letter',
+      description: myUserId ? 'Your duties for this exam, with instructions.' : 'You have no duties in this exam period.',
+      disabled: !myUserId,
+      onSelect: () => downloadDutyLetters(gridFromSchedule(schedule), pdfMeta, { onlyKeys: [myUserId], fileLabel: 'My' }),
+    },
+    {
+      key: 'chart',
+      label: 'Full duty chart',
+      description: 'Every session, room and invigilator for this exam.',
+      onSelect: () => downloadDutyChart(gridFromSchedule(schedule), pdfMeta),
+    },
+  ];
+
   // Slots for the selected day, ordered by start time (these become grid ROWS).
   const daySlots = useMemo(
     () =>
@@ -139,8 +166,6 @@ export default function MySchedule() {
 
   return (
     <div className="max-w-[1400px]">
-      <ToastContainer position="top-right" autoClose={3000} />
-
       {/* Header */}
       <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
         <div>
@@ -149,16 +174,24 @@ export default function MySchedule() {
             Duty grid for the active exam period. Click another invigilator to request a swap.
           </p>
         </div>
-        {examPeriod && (
-          <div className="bg-surface rounded-xl border border-border px-4 py-2 flex items-center gap-3 text-xs shadow-sm">
-            <span className="font-bold uppercase tracking-wider text-textFaint">Active</span>
-            <span className="text-sm font-semibold text-text">{examPeriod.semester_label}</span>
-            <span className="text-textFaint">·</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-500 text-white">
-              {examPeriod.exam_type}
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          {examPeriod && (
+            <div className="bg-surface rounded-xl border border-border px-4 py-2 flex items-center gap-3 text-xs shadow-sm">
+              <span className="font-bold uppercase tracking-wider text-textFaint">Active</span>
+              <span className="text-sm font-semibold text-text">{examPeriod.semester_label}</span>
+              <span className="text-textFaint">·</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-500 text-white">
+                {examPeriod.exam_type}
+              </span>
+            </div>
+          )}
+          <PdfExportMenu
+            items={pdfItems}
+            disabled={loading || !!error || schedule.length === 0}
+            disabledReason="No invigilation schedule has been published yet."
+            onError={(err) => toast.error(err?.message || 'Could not generate the PDF.')}
+          />
+        </div>
       </div>
 
       {loading && (

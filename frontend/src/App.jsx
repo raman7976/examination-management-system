@@ -11,11 +11,14 @@ import InvigilatorScheduling from './pages/InvigilatorScheduling.jsx';
 import SwapApproval from './pages/SwapApproval.jsx';
 import CourseSeatingPDF from './pages/CourseSeatingPDF.jsx';
 import PastExams from './pages/PastExams.jsx';
+import PastInvigilation from './pages/PastInvigilation.jsx';
 import Registration from './pages/Registration.jsx';
 import InvigilatorPortal from './pages/InvigilatorPortal.jsx';
 import MySchedule from './pages/invigilator/MySchedule.jsx';
 import IncomingRequests from './pages/invigilator/IncomingRequests.jsx';
 import OutgoingRequests from './pages/invigilator/OutgoingRequests.jsx';
+import PastDuties from './pages/invigilator/PastDuties.jsx';
+import UnfairMeansAdmin from './pages/UnfairMeansAdmin.jsx';
 import Profile from './pages/invigilator/Profile.jsx';
 import AdminRoute from './components/AdminRoute';
 import InvigilatorRoute from './components/InvigilatorRoute.jsx';
@@ -41,8 +44,10 @@ function App() {
             <Route path="seating-arrangement"    element={<SeatingArrangement />} />
             <Route path="invigilator-scheduling" element={<InvigilatorScheduling />} />
             <Route path="swap-approval"          element={<SwapApproval />} />
+            <Route path="unfair-means"           element={<UnfairMeansAdmin />} />
             <Route path="pdf-reports"            element={<CourseSeatingPDF />} />
             <Route path="past-exams"             element={<PastExams />} />
+            <Route path="past-invigilation"      element={<PastInvigilation />} />
           </Route>
         </Route>
 
@@ -53,7 +58,11 @@ function App() {
             <Route path="schedule"     element={<MySchedule />} />
             <Route path="incoming"     element={<IncomingRequests />} />
             <Route path="outgoing"     element={<OutgoingRequests />} />
+            <Route path="past-duties"  element={<PastDuties />} />
             <Route path="profile"      element={<Profile />} />
+            {/* Unknown or removed portal pages (e.g. an old bookmark) go to the schedule.
+                Absolute path: a relative one would resolve against the unmatched URL and loop. */}
+            <Route path="*"            element={<Navigate to="/invigilator-portal/schedule" replace />} />
           </Route>
         </Route>
       </Routes>

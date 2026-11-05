@@ -1,0 +1,48 @@
+@startuml fig3_1_architecture
+' Figure 3.1 - High-level layered architecture (same layout as the original, with the new components added).
+!pragma layout smetana
+!theme plain
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 11
+skinparam rectangle {
+  RoundCorner 2
+}
+
+rectangle "1. Presentation Layer (Client)" as L1 {
+  rectangle "jsPDF / jspdf-autotable\n(Client-Side Reports: seating,\ninvigilation, unfair means)" as PDF
+  rectangle "React.js 19 SPA\n(Vite + TailwindCSS)\nAdmin Dashboard + Invigilator Portal" as SPA
+}
+
+rectangle "2. Application Layer (Server)" as L2 {
+  rectangle "Security Middleware\n(Helmet, CORS allow-list,\nexpress-rate-limit)" as SEC
+  rectangle "Express.js REST API\n(Stateless, JWT + Role-Authenticated)" as API
+  rectangle "Multer (memoryStorage)\n(In-Memory File Processing)" as MUL
+  rectangle "AdmZip\n(In-Memory ZIP Extraction)" as ZIP
+  rectangle "ExcelJS + SheetJS\n(Spreadsheet Parsing)" as XLS
+  rectangle "Nodemailer (SMTP)\n(Password-Reset OTP)" as MAIL
+}
+
+rectangle "3. Algorithmic Engine (Decoupled Utility)" as L3 {
+  rectangle "Macro-Allocation\n(Lane Fracturing)" as MACRO
+  rectangle "Micro-Seating\n(Zip Algorithm)" as MICRO
+  rectangle "Invigilator Allocation\n(Two-Phase)" as INV
+}
+
+rectangle "4. Persistence Layer (Database)" as L4 {
+  rectangle "mysql2/promise\n(Connection Pool)" as POOL
+  database "MySQL 8.0\n(ACID-Compliant RDBMS)" as DB
+}
+
+PDF .down.> SPA : Client-Side Only
+SPA -down-> SEC : HTTP/JSON\nBearer Token
+SEC -down-> API
+API -down-> MUL : req.file.buffer
+MUL -down-> ZIP : Buffer
+MUL -down-> XLS : Buffer
+API -right-> MAIL : OTP e-mail
+API -down-> MACRO : function call
+API -down-> MICRO : function call
+API -down-> INV : function call
+API -down-> POOL : Parameterised SQL
+POOL -down-> DB : Connection Pool
+@enduml

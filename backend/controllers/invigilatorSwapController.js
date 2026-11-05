@@ -17,7 +17,7 @@
 // ═════════════════════════════════════════════════════════════════════════════
 import db from '../config/mysql.js';
 import { resolveActivePeriod, loadPeriod } from '../utils/periodResolver.js';
-import { isInstructorForRoom } from './invigilatorSchedulingController.js';
+import { isInstructorForRoom, loadScheduleGrid } from './invigilatorSchedulingController.js';
 
 // Tiny helper — throw an Error with a `.http` status so the catch can map it.
 const httpErr = (status, message) => Object.assign(new Error(message), { http: status });
@@ -231,81 +231,9 @@ export const getFullSchedule = async (req, res) => {
         const periodId = await resolveActivePeriod(null, req.query.period_id);
         const period = await loadPeriod(null, periodId);
 
-        const [slots] = await db.query(
-            `SELECT es.id AS slot_id, es.exam_date, es.exam_day, es.start_time, es.end_time
-             FROM exam_slots es
-             WHERE es.exam_period_id = ?
-             ORDER BY es.exam_date, es.start_time`,
-            [periodId]
-        );
-        if (slots.length === 0)
-            return res.json({ success: true, exam_period: period, schedule: [] });
-
-        const slotIds = slots.map(s => s.slot_id);
-        const ph = slotIds.map(() => '?').join(',');
-
-        // Rooms (with student load + course codes) per slot — same aggregation
-        // getSchedule uses, so the grid columns match the admin view exactly.
-        const [roomRows] = await db.query(
-            `SELECT se.slot_id, sa.classroom_id, c.room_name, c.location_order,
-                    SUM(sa.student_count) AS students_in_room,
-                    GROUP_CONCAT(DISTINCT co.course_code SEPARATOR ', ') AS course_codes
-             FROM seating_allocations sa
-             JOIN scheduled_exams se ON sa.scheduled_exam_id = se.id
-             JOIN classrooms c       ON sa.classroom_id = c.id
-             JOIN exam_slots es      ON se.slot_id = es.id
-             JOIN exam_periods ep    ON ep.id = es.exam_period_id
-             JOIN courses co         ON se.course_code = co.course_code AND co.semester_label = ep.semester_label
-             WHERE se.slot_id IN (${ph})
-             GROUP BY se.slot_id, sa.classroom_id, c.room_name, c.location_order
-             ORDER BY se.slot_id, c.location_order`,
-            slotIds
-        );
-
-        const [assignRows] = await db.query(
-            `SELECT ia.id AS assignment_id, ia.slot_id, ia.classroom_id, ia.user_id,
-                    ia.is_course_instructor, u.full_name, u.role, u.employee_id
-             FROM invigilator_assignments ia
-             JOIN users u ON ia.user_id = u.id
-             WHERE ia.slot_id IN (${ph}) AND ia.exam_period_id = ?
-             ORDER BY ia.slot_id, ia.classroom_id, u.full_name`,
-            [...slotIds, periodId]
-        );
-
-        const slotMap = new Map();
-        for (const s of slots) slotMap.set(s.slot_id, { ...s, rooms: [] });
-        const roomKey = (sid, cid) => `${sid}|${cid}`;
-        const roomMap = new Map();
-        for (const r of roomRows) {
-            const k = roomKey(r.slot_id, r.classroom_id);
-            const students = Number(r.students_in_room);
-            const entry = {
-                classroom_id:   r.classroom_id,
-                room_name:      r.room_name,
-                location_order: r.location_order,
-                students,
-                required:       Math.max(1, Math.ceil(students / 25)),
-                course_codes:   r.course_codes,
-                invigilators:   [],
-            };
-            roomMap.set(k, entry);
-            slotMap.get(r.slot_id).rooms.push(entry);
-        }
-        for (const a of assignRows) {
-            const room = roomMap.get(roomKey(a.slot_id, a.classroom_id));
-            if (!room) continue;
-            room.invigilators.push({
-                assignment_id:        a.assignment_id,
-                user_id:              a.user_id,
-                full_name:            a.full_name,
-                role:                 a.role,
-                employee_id:          a.employee_id,
-                is_course_instructor: !!a.is_course_instructor,
-                is_me:                a.user_id === req.user.id,
-            });
-        }
-
-        res.json({ success: true, exam_period: period, schedule: Array.from(slotMap.values()) });
+        // Same grid builder as the admin getSchedule, so both views match exactly.
+        const schedule = await loadScheduleGrid(null, periodId, { meUserId: req.user.id });
+        res.json({ success: true, exam_period: period, schedule });
     } catch (err) {
         const status = err.http || 500;
         console.error('getFullSchedule error:', err);

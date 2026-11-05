@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getExamSlots, getUnscheduledCourses, getScheduledCourses, assignCoursesToSlot, unassignCourse } from '../api/api.js';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import PeriodScopedEmptyState from '../components/PeriodScopedEmptyState.jsx';
 
@@ -210,8 +210,6 @@ function SmartScheduling() {
 
   return (
     <div className="max-w-full">
-      <ToastContainer position="top-right" theme="colored" />
-
       {/* ── Page Header ── */}
       <div className="mb-5">
         <h2 className="text-2xl font-bold text-brand-500 tracking-tight">Smart Scheduling</h2>
